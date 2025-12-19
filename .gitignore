@@ -1,0 +1,9 @@
+.emulator-data
+.venv
+.build
+tf/terraform.tfstate
+tf/terraform.tfvars
+*.zip
+*.pyc
+*.log
+.emulator-data
