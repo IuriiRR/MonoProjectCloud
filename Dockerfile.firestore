@@ -1,0 +1,15 @@
+FROM node:18-alpine
+
+# Встановлюємо Java (OpenJDK 11) та bash
+RUN apk add --no-cache openjdk11-jre bash
+
+# Встановлюємо firebase-tools
+RUN npm install -g firebase-tools
+
+# Створюємо робочу директорію
+WORKDIR /workspace
+
+# Відкриваємо порти для Firestore, UI та Hub
+EXPOSE 8080 4000 4500
+
+CMD ["firebase", "emulators:start", "--project", "demo-monobank"]

@@ -7,3 +7,6 @@ tf/terraform.tfvars
 *.pyc
 *.log
 .emulator-data
+.vscode
+tf/.terraform
+tf/.terraform.lock.hcl

@@ -1,0 +1,27 @@
+services:
+
+  firestore:
+    build:
+      context: .
+      dockerfile: Dockerfile.firestore
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    ports:
+      - "8080:8080"
+      - "4000:4000"
+      - "4500:4500"
+    command: >
+      sh -c "firebase emulators:start --only firestore --project demo-monobank --import=./.emulator-data --export-on-exit"
+
+  users_api:
+    build:
+      context: .
+      dockerfile: Dockerfile.users_api
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+      - FIRESTORE_PROJECT_ID=demo-monobank
+    depends_on:
+      - firestore
+    ports:
+      - "8081:8081"

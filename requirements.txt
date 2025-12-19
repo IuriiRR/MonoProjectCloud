@@ -1,0 +1,11 @@
+functions-framework==3.8.3
+Flask==3.0.3
+google-cloud-firestore==2.16.1
+requests==2.32.3
+pydantic==2.9.2
+
+# tests
+pytest==8.3.3
+responses==0.25.3
+
+
