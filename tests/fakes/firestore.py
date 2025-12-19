@@ -43,6 +43,12 @@ class FakeDocumentRef:
         self._collection = collection
         self._id = doc_id
 
+    def collection(self, name: str) -> "FakeCollectionRef":
+        # Support subcollections by treating the fully-qualified collection path as the key.
+        # Example: users/u1/accounts
+        path = f"{self._collection._name}/{self._id}/{name}"
+        return FakeCollectionRef(self._collection._db, path)
+
     def get(self) -> FakeDocumentSnapshot:
         data = self._collection._docs.get(self._id)
         return FakeDocumentSnapshot(id=self._id, _data=data)

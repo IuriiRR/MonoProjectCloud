@@ -1,6 +1,10 @@
-## Deploy `users_api` to GCP (Terraform)
+## Deploy `users_api` + `accounts_api` to GCP (Terraform)
 
-This deploys `functions/users_api` as a **Cloud Function Gen2** (HTTP) and grants it Firestore access.
+This deploys:
+- `functions/users_api` as `users-api`
+- `functions/accounts_api` as `accounts-api`
+
+Both are **Cloud Functions Gen2** (HTTP) and have Firestore access.
 
 ### Prereqs
 - Terraform installed (`terraform -v`)
@@ -38,7 +42,7 @@ terraform init
 terraform apply
 ```
 
-Terraform will output `users_api_url`.
+Terraform will output `users_api_url` and `accounts_api_url`.
 
 ### Update / redeploy
 

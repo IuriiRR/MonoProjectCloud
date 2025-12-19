@@ -25,3 +25,15 @@ services:
       - firestore
     ports:
       - "8081:8081"
+
+  accounts_api:
+    build:
+      context: .
+      dockerfile: Dockerfile.accounts_api
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+      - FIRESTORE_PROJECT_ID=demo-monobank
+    depends_on:
+      - firestore
+    ports:
+      - "8082:8082"

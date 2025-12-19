@@ -6,18 +6,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install deps first (better layer caching)
-COPY functions/users_api/requirements.txt /app/requirements.txt
+COPY functions/accounts_api/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy function source
-COPY functions/users_api /app
+COPY functions/accounts_api /app
 
-EXPOSE 8081
+EXPOSE 8082
 
 # Default envs; override in docker-compose / deployment
-ENV PORT=8081
+ENV PORT=8082
 
-CMD ["functions-framework", "--target", "users_api", "--source", "main.py", "--port", "8081", "--debug"]
-
+CMD ["functions-framework", "--target", "accounts_api", "--source", "main.py", "--port", "8082", "--debug"]
 
 

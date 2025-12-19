@@ -1,0 +1,244 @@
+{
+    "info": {
+        "_postman_id": "b9c3b0a2-3b86-4a05-8b0e-19d2c41d0a5e",
+        "name": "CloudApi",
+        "description": "Postman collection for CloudApi Firestore-backed Cloud Functions.\n\nSet variables:\n- users_url (e.g. http://localhost:8081 for users_api)\n- accounts_url (e.g. http://localhost:8082 for accounts_api)\n- user_id\n- account_id",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        {
+            "key": "users_url",
+            "value": "http://localhost:8081"
+        },
+        {
+            "key": "accounts_url",
+            "value": "http://localhost:8082"
+        },
+        {
+            "key": "user_id",
+            "value": "u1"
+        },
+        {
+            "key": "account_id",
+            "value": "a1"
+        }
+    ],
+    "item": [
+        {
+            "name": "users_api",
+            "item": [
+                {
+                    "name": "List users",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{users_url}}/users",
+                            "host": [
+                                "{{users_url}}"
+                            ],
+                            "path": [
+                                "users"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create user",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"username\": \"Alice\",\n  \"mono_token\": null,\n  \"active\": true\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{users_url}}/users",
+                            "host": [
+                                "{{users_url}}"
+                            ],
+                            "path": [
+                                "users"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get user",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{users_url}}/users/{{user_id}}",
+                            "host": [
+                                "{{users_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Patch user",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"active\": false\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{users_url}}/users/{{user_id}}",
+                            "host": [
+                                "{{users_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete user",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{users_url}}/users/{{user_id}}",
+                            "host": [
+                                "{{users_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "accounts_api",
+            "item": [
+                {
+                    "name": "List accounts",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{accounts_url}}/users/{{user_id}}/accounts",
+                            "host": [
+                                "{{accounts_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create account (jar)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{account_id}}\",\n  \"type\": \"jar\",\n  \"send_id\": null,\n  \"currency\": {\n    \"code\": 980,\n    \"name\": \"UAH\",\n    \"symbol\": \"â‚´\",\n    \"flag\": \"ðŸ‡ºðŸ‡¦\"\n  },\n  \"balance\": 0,\n  \"is_active\": true,\n  \"title\": \"My jar\",\n  \"goal\": null,\n  \"is_budget\": false,\n  \"invested\": 0\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{accounts_url}}/users/{{user_id}}/accounts",
+                            "host": [
+                                "{{accounts_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get account",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{accounts_url}}/users/{{user_id}}/accounts/{{account_id}}",
+                            "host": [
+                                "{{accounts_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Patch account",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"is_active\": false,\n  \"title\": null\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{accounts_url}}/users/{{user_id}}/accounts/{{account_id}}",
+                            "host": [
+                                "{{accounts_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete account",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{accounts_url}}/users/{{user_id}}/accounts/{{account_id}}",
+                            "host": [
+                                "{{accounts_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

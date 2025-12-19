@@ -1,8 +1,0 @@
-project_id   = "your-gcp-project-id"
-region       = "europe-west1"
-function_name = "users-api"
-
-# Must be globally unique
-bucket_name  = "your-gcp-project-id-functions-src"
-
-

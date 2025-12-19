@@ -10,3 +10,5 @@ tf/terraform.tfvars
 .vscode
 tf/.terraform
 tf/.terraform.lock.hcl
+tf/.terraform.lock.hcl.backup
+tf/terraform.tfstate.backup
