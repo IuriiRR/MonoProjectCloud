@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 
 class ServerTimestamp:
@@ -66,6 +66,60 @@ class FakeDocumentRef:
         self._collection._docs.pop(self._id, None)
 
 
+class FakeQuery:
+    def __init__(self, collection: FakeCollectionRef):
+        self._collection = collection
+        self._where_clauses: List[tuple] = []
+        self._order_by_clauses: List[tuple] = []
+        self._limit_n: Optional[int] = None
+
+    def where(self, field: str, op: str, value: Any) -> FakeQuery:
+        self._where_clauses.append((field, op, value))
+        return self
+
+    def order_by(self, field: str, direction: str = "ASCENDING") -> FakeQuery:
+        self._order_by_clauses.append((field, direction))
+        return self
+
+    def limit(self, n: int) -> FakeQuery:
+        self._limit_n = n
+        return self
+
+    def stream(self) -> Iterable[FakeDocumentSnapshot]:
+        docs = [(doc_id, dict(data)) for doc_id, data in self._collection._docs.items()]
+
+        # Apply WHERE
+        for field, op, value in self._where_clauses:
+            if op == "==":
+                docs = [d for d in docs if d[1].get(field) == value]
+            elif op == ">=":
+                docs = [d for d in docs if d[1].get(field) >= value]
+            elif op == "<=":
+                docs = [d for d in docs if d[1].get(field) <= value]
+            elif op == ">":
+                docs = [d for d in docs if d[1].get(field) > value]
+            elif op == "<":
+                docs = [d for d in docs if d[1].get(field) < value]
+
+        # Apply ORDER BY (naive, supports only first order_by for now)
+        if self._order_by_clauses:
+            field, direction = self._order_by_clauses[0]
+            reverse = (direction == "DESCENDING")
+            # Filter out docs missing the field before sorting to avoid TypeError
+            docs = sorted(
+                [d for d in docs if field in d[1]],
+                key=lambda x: x[1][field],
+                reverse=reverse
+            )
+
+        # Apply LIMIT
+        if self._limit_n is not None:
+            docs = docs[: self._limit_n]
+
+        for doc_id, data in docs:
+            yield FakeDocumentSnapshot(id=doc_id, _data=data)
+
+
 class FakeCollectionRef:
     def __init__(self, db: "FakeFirestore", name: str):
         self._db = db
@@ -75,26 +129,17 @@ class FakeCollectionRef:
     def document(self, doc_id: str) -> FakeDocumentRef:
         return FakeDocumentRef(self, doc_id)
 
-    def stream(self) -> Iterable[FakeDocumentSnapshot]:
-        for doc_id, data in list(self._docs.items()):
-            yield FakeDocumentSnapshot(id=doc_id, _data=dict(data))
+    def where(self, field: str, op: str, value: Any) -> FakeQuery:
+        return FakeQuery(self).where(field, op, value)
 
-    def limit(self, n: int) -> "FakeQuery":
-        return FakeQuery(self, n)
+    def order_by(self, field: str, direction: str = "ASCENDING") -> FakeQuery:
+        return FakeQuery(self).order_by(field, direction)
 
-
-class FakeQuery:
-    def __init__(self, collection: FakeCollectionRef, limit_n: int):
-        self._collection = collection
-        self._limit_n = limit_n
+    def limit(self, n: int) -> FakeQuery:
+        return FakeQuery(self).limit(n)
 
     def stream(self) -> Iterable[FakeDocumentSnapshot]:
-        i = 0
-        for doc_id, data in list(self._collection._docs.items()):
-            if i >= self._limit_n:
-                break
-            i += 1
-            yield FakeDocumentSnapshot(id=doc_id, _data=dict(data))
+        return FakeQuery(self).stream()
 
 
 class FakeFirestore:
@@ -103,5 +148,3 @@ class FakeFirestore:
 
     def collection(self, name: str) -> FakeCollectionRef:
         return FakeCollectionRef(self, name)
-
-

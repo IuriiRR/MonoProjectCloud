@@ -1,0 +1,216 @@
+import json
+from typing import Any, Dict, Tuple
+
+import functions_framework
+from flask import Response, make_response, request
+from google.cloud import firestore
+from pydantic import ValidationError
+
+# Support both "run as a package" (relative imports) and "run from this folder" (local imports).
+try:  # pragma: no cover
+    from .firestore_client import get_db
+    from .models import TransactionCreate, TransactionUpdate
+    from .serialization import transaction_doc_to_dict
+except Exception:  # pragma: no cover
+    from firestore_client import get_db
+    from models import TransactionCreate, TransactionUpdate
+    from serialization import transaction_doc_to_dict
+
+
+def _json_response(payload: Any, status: int = 200) -> Response:
+    resp = make_response(json.dumps(payload, ensure_ascii=False), status)
+    resp.headers["Content-Type"] = "application/json; charset=utf-8"
+    # CORS (local dev convenience)
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    return resp
+
+
+def _error(message: str, status: int = 400, extra: Dict[str, Any] | None = None) -> Response:
+    body: Dict[str, Any] = {"error": message}
+    if extra:
+        body.update(extra)
+    return _json_response(body, status=status)
+
+
+def _parse_json(request) -> Tuple[Dict[str, Any] | None, Response | None]:
+    if not request.data:
+        return None, None
+    try:
+        return request.get_json(silent=False), None
+    except Exception:
+        return None, _error("Invalid JSON body", 400)
+
+
+def _require_account(db, user_id: str, account_id: str):
+    account_ref = db.collection("users").document(user_id).collection("accounts").document(account_id)
+    account_doc = account_ref.get()
+    if not account_doc.exists:
+        return None, _error("Account not found", 404)
+    return account_ref, None
+
+
+@functions_framework.http
+def transactions_api(request):
+    """
+    Cloud Function HTTP entry point for CRUD over `users/{user_id}/accounts/{account_id}/transactions`.
+
+    Paths:
+      - GET    /users/{user_id}/accounts/{account_id}/transactions
+      - POST   /users/{user_id}/accounts/{account_id}/transactions
+      - GET    /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}
+      - PUT    /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}
+      - PATCH  /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}
+      - DELETE /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}
+    """
+
+    if request.method == "OPTIONS":
+        return _json_response({}, status=204)
+
+    path = request.path or "/"
+    parts = [p for p in path.split("/") if p]
+
+    if not parts:
+        return _json_response(
+            {
+                "service": "transactions_api",
+                "endpoints": [
+                    "GET /users/{user_id}/accounts/{account_id}/transactions",
+                    "POST /users/{user_id}/accounts/{account_id}/transactions",
+                    "GET /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}",
+                    "PUT/PATCH /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}",
+                    "DELETE /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}",
+                ],
+            }
+        )
+
+    if parts[0] != "users":
+        return _error("Not found", 404)
+
+    if len(parts) < 5 or parts[2] != "accounts" or parts[4] != "transactions":
+        return _error("Not found", 404)
+
+    user_id = parts[1]
+    account_id = parts[3]
+
+    db = get_db()
+    _, acc_err = _require_account(db, user_id, account_id)
+    if acc_err:
+        return acc_err
+
+    transactions_ref = (
+        db.collection("users")
+        .document(user_id)
+        .collection("accounts")
+        .document(account_id)
+        .collection("transactions")
+    )
+
+    # /users/{user_id}/accounts/{account_id}/transactions
+    if len(parts) == 5:
+        if request.method == "GET":
+            # Sorting by time desc by default
+            query = transactions_ref.order_by("time", direction=firestore.Query.DESCENDING)
+            
+            # Optional filters
+            since = request.args.get("since")
+            if since and since.isdigit():
+                query = query.where("time", ">=", int(since))
+                
+            time_gte = request.args.get("time_gte")
+            if time_gte and time_gte.isdigit():
+                query = query.where("time", ">=", int(time_gte))
+
+            limit = request.args.get("limit")
+            if limit and limit.isdigit():
+                query = query.limit(int(limit))
+
+            docs = query.stream()
+            transactions = [transaction_doc_to_dict(d.id, d.to_dict() or {}) for d in docs]
+            return _json_response({"transactions": transactions})
+
+        if request.method == "POST":
+            body, err = _parse_json(request)
+            if err:
+                return err
+            if body is None:
+                return _error("JSON body required", 400)
+            try:
+                payload = TransactionCreate.model_validate(body)
+            except ValidationError as e:
+                return _error("Validation error", 400, {"details": e.errors()})
+
+            doc_ref = transactions_ref.document(payload.id)
+            if doc_ref.get().exists:
+                return _error("Transaction already exists", 409)
+
+            now = firestore.SERVER_TIMESTAMP
+            data = payload.model_dump()
+            data["created_at"] = now
+            data["updated_at"] = now
+            
+            doc_ref.set(data)
+            created = doc_ref.get()
+            return _json_response(
+                {"transaction": transaction_doc_to_dict(created.id, created.to_dict() or {})},
+                status=201,
+            )
+
+        return _error("Method not allowed", 405)
+
+    # /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}
+    if len(parts) == 6:
+        transaction_id = parts[5]
+        doc_ref = transactions_ref.document(transaction_id)
+
+        if request.method == "GET":
+            doc = doc_ref.get()
+            if not doc.exists:
+                return _error("Transaction not found", 404)
+            return _json_response(
+                {"transaction": transaction_doc_to_dict(doc.id, doc.to_dict() or {})}
+            )
+
+        if request.method in ("PUT", "PATCH"):
+            body, err = _parse_json(request)
+            if err:
+                return err
+            if body is None:
+                return _error("JSON body required", 400)
+            try:
+                payload = TransactionUpdate.model_validate(body)
+            except ValidationError as e:
+                return _error("Validation error", 400, {"details": e.errors()})
+
+            doc = doc_ref.get()
+            if not doc.exists:
+                return _error("Transaction not found", 404)
+
+            updates: Dict[str, Any] = {}
+            # Use model_fields_set to allow explicit nulls if needed, though most transaction fields are non-nullable in Monobank
+            for field in payload.model_fields_set:
+                updates[field] = getattr(payload, field)
+
+            if not updates:
+                return _error("No updatable fields provided", 400)
+
+            updates["updated_at"] = firestore.SERVER_TIMESTAMP
+            doc_ref.update(updates)
+            updated = doc_ref.get()
+            return _json_response(
+                {"transaction": transaction_doc_to_dict(updated.id, updated.to_dict() or {})}
+            )
+
+        if request.method == "DELETE":
+            doc = doc_ref.get()
+            if not doc.exists:
+                return _error("Transaction not found", 404)
+            doc_ref.delete()
+            return _json_response({"deleted": True, "transaction_id": transaction_id})
+
+        return _error("Method not allowed", 405)
+
+    return _error("Not found", 404)
+
+

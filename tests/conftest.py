@@ -22,6 +22,7 @@ def patch_users_api_db(monkeypatch, fake_db):
     This keeps tests fast and independent from the Firestore emulator.
     """
     import functions.accounts_api.main as accounts_main
+    import functions.transactions_api.main as transactions_main
     import functions.users_api.main as users_main
     from tests.fakes import firestore as fake_firestore
 
@@ -33,6 +34,11 @@ def patch_users_api_db(monkeypatch, fake_db):
     monkeypatch.setattr(accounts_main, "get_db", lambda: fake_db)
     monkeypatch.setattr(
         accounts_main.firestore, "SERVER_TIMESTAMP", fake_firestore.SERVER_TIMESTAMP
+    )
+
+    monkeypatch.setattr(transactions_main, "get_db", lambda: fake_db)
+    monkeypatch.setattr(
+        transactions_main.firestore, "SERVER_TIMESTAMP", fake_firestore.SERVER_TIMESTAMP
     )
 
 

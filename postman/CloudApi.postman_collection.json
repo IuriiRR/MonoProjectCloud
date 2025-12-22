@@ -21,6 +21,14 @@
         {
             "key": "account_id",
             "value": "a1"
+        },
+        {
+            "key": "transactions_url",
+            "value": "http://localhost:8083"
+        },
+        {
+            "key": "transaction_id",
+            "value": "t1"
         }
     ],
     "item": [
@@ -234,6 +242,129 @@
                                 "{{user_id}}",
                                 "accounts",
                                 "{{account_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "transactions_api",
+            "item": [
+                {
+                    "name": "List transactions",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}",
+                                "transactions"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create transaction",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"id\": \"{{transaction_id}}\",\n  \"time\": 1703241600,\n  \"description\": \"Coffee\",\n  \"amount\": -5000,\n  \"operation_amount\": -5000,\n  \"balance\": 95000,\n  \"currency\": {\n    \"code\": 980,\n    \"name\": \"UAH\"\n  },\n  \"mcc_code\": 5812\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}",
+                                "transactions"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get transaction",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions/{{transaction_id}}",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}",
+                                "transactions",
+                                "{{transaction_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Patch transaction",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"comment\": \"Updated comment\"\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions/{{transaction_id}}",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}",
+                                "transactions",
+                                "{{transaction_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete transaction",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions/{{transaction_id}}",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}",
+                                "transactions",
+                                "{{transaction_id}}"
                             ]
                         }
                     }
