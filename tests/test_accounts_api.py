@@ -155,3 +155,75 @@ def test_options(app):
     assert resp.status_code == 204
 
 
+def test_batch_put_accounts(app):
+    _create_user(app, "u1")
+    
+    # 1. First batch PUT
+    payload = {
+        "accounts": [
+            {
+                "id": "a1",
+                "type": "jar",
+                "currency": {"code": 980},
+                "balance": 100,
+                "title": "Batch Jar 1"
+            },
+            {
+                "id": "a2",
+                "type": "card",
+                "currency": {"code": 840},
+                "balance": 50,
+            }
+        ]
+    }
+    with app.test_request_context("/users/u1/accounts", method="PUT", json=payload):
+        resp = accounts_api(flask_request)
+    body = _json(resp)
+    assert resp.status_code == 200
+    assert body["processed"] == 2
+    assert "a1" in body["ids"]
+    assert "a2" in body["ids"]
+
+    # 2. Verify creation
+    with app.test_request_context("/users/u1/accounts/a1", method="GET"):
+        resp_a1 = accounts_api(flask_request)
+    assert _json(resp_a1)["account"]["title"] == "Batch Jar 1"
+
+    # 3. Second batch PUT with overlap (duplicate skipping tolerance)
+    payload_overlap = {
+        "accounts": [
+            {
+                "id": "a1",
+                "type": "jar",
+                "currency": {"code": 980},
+                "balance": 200, # Updated balance
+                "title": "Batch Jar 1 Updated"
+            },
+            {
+                "id": "a3", # New account
+                "type": "card",
+                "currency": {"code": 980},
+                "balance": 0,
+            }
+        ]
+    }
+    with app.test_request_context("/users/u1/accounts", method="PUT", json=payload_overlap):
+        resp_overlap = accounts_api(flask_request)
+    body_overlap = _json(resp_overlap)
+    assert resp_overlap.status_code == 200
+    assert body_overlap["processed"] == 2
+    assert "a1" in body_overlap["ids"]
+    assert "a3" in body_overlap["ids"]
+
+    # 4. Verify update and new creation
+    with app.test_request_context("/users/u1/accounts/a1", method="GET"):
+        resp_v1 = accounts_api(flask_request)
+    assert _json(resp_v1)["account"]["balance"] == 200
+    assert _json(resp_v1)["account"]["title"] == "Batch Jar 1 Updated"
+
+    with app.test_request_context("/users/u1/accounts/a3", method="GET"):
+        resp_v3 = accounts_api(flask_request)
+    assert resp_v3.status_code == 200
+    assert _json(resp_v3)["account"]["id"] == "a3"
+
+

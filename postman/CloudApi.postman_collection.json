@@ -245,6 +245,33 @@
                             ]
                         }
                     }
+                },
+                {
+                    "name": "Batch update accounts",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"accounts\": [\n    {\n      \"id\": \"{{account_id}}\",\n      \"type\": \"jar\",\n      \"currency\": {\"code\": 980},\n      \"balance\": 100,\n      \"title\": \"Batch Jar 1\"\n    },\n    {\n      \"id\": \"new_account\",\n      \"type\": \"card\",\n      \"currency\": {\"code\": 840},\n      \"balance\": 50\n    }\n  ]\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{accounts_url}}/users/{{user_id}}/accounts",
+                            "host": [
+                                "{{accounts_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts"
+                            ]
+                        }
+                    }
                 }
             ]
         },
@@ -404,6 +431,35 @@
                                 "{{account_id}}",
                                 "transactions",
                                 "{{transaction_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Batch update transactions",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"transactions\": [\n    {\n      \"id\": \"{{transaction_id}}\",\n      \"time\": 1703241600,\n      \"description\": \"Batch Tx 1\",\n      \"amount\": -100,\n      \"balance\": 900,\n      \"currency\": {\"code\": 980}\n    },\n    {\n      \"id\": \"new_transaction\",\n      \"time\": 1703241700,\n      \"description\": \"Batch Tx 2\",\n      \"amount\": -200,\n      \"balance\": 700,\n      \"currency\": {\"code\": 980}\n    }\n  ]\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "accounts",
+                                "{{account_id}}",
+                                "transactions"
                             ]
                         }
                     }

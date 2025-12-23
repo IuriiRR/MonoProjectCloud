@@ -203,6 +203,42 @@ def transactions_api(request):
                 status=201,
             )
 
+        if request.method == "PUT":
+            body, err = _parse_json(request)
+            if err:
+                return err
+            if body is None or "transactions" not in body or not isinstance(body["transactions"], list):
+                return _error("JSON body with 'transactions' list required", 400)
+
+            transactions_data = body["transactions"]
+            batch = db.batch()
+            now = firestore.SERVER_TIMESTAMP
+            processed_ids = []
+
+            for i, item in enumerate(transactions_data):
+                # Inject denormalized IDs from path if missing from body
+                if "user_id" not in item:
+                    item["user_id"] = user_id
+                if "account_id" not in item:
+                    item["account_id"] = account_id
+
+                try:
+                    payload = TransactionCreate.model_validate(item)
+                    doc_ref = transactions_ref.document(payload.id)
+                    
+                    data = payload.model_dump()
+                    data["created_at"] = now
+                    data["updated_at"] = now
+                    
+                    # Use set with merge=True for "duplicate skipping tolerance" (upsert)
+                    batch.set(doc_ref, data, merge=True)
+                    processed_ids.append(payload.id)
+                except ValidationError as e:
+                    return _error(f"Validation error at index {i}", 400, {"details": e.errors()})
+
+            batch.commit()
+            return _json_response({"processed": len(processed_ids), "ids": processed_ids})
+
         return _error("Method not allowed", 405)
 
     # /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}

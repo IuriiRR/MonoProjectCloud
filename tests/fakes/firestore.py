@@ -158,6 +158,39 @@ class FakeFirestore:
     def collection_group(self, collection_id: str) -> FakeCollectionGroup:
         return FakeCollectionGroup(self, collection_id)
 
+    def batch(self) -> FakeWriteBatch:
+        return FakeWriteBatch()
+
+
+class FakeWriteBatch:
+    def __init__(self):
+        self._ops = []
+
+    def set(self, doc_ref: FakeDocumentRef, data: Dict[str, Any], merge: bool = False):
+        self._ops.append(("set", doc_ref, data, merge))
+
+    def update(self, doc_ref: FakeDocumentRef, updates: Dict[str, Any]):
+        self._ops.append(("update", doc_ref, updates, None))
+
+    def delete(self, doc_ref: FakeDocumentRef):
+        self._ops.append(("delete", doc_ref, None, None))
+
+    def commit(self):
+        for op_type, doc_ref, data, merge in self._ops:
+            if op_type == "set":
+                if merge:
+                    if doc_ref._id in doc_ref._collection._docs:
+                        doc_ref.update(data)
+                    else:
+                        doc_ref.set(data)
+                else:
+                    doc_ref.set(data)
+            elif op_type == "update":
+                doc_ref.update(data)
+            elif op_type == "delete":
+                doc_ref.delete()
+        self._ops = []
+
 
 class FakeCollectionGroup:
     def __init__(self, db: FakeFirestore, collection_id: str):
