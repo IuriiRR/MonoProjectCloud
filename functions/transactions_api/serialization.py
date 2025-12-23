@@ -13,6 +13,8 @@ def _dt_to_iso(dt: Optional[datetime]) -> Optional[str]:
 def transaction_doc_to_dict(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "id": data.get("id") or doc_id,
+        "user_id": data.get("user_id"),
+        "account_id": data.get("account_id"),
         "time": data.get("time"),
         "description": data.get("description"),
         "amount": data.get("amount"),

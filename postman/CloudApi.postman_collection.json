@@ -252,11 +252,38 @@
             "name": "transactions_api",
             "item": [
                 {
+                    "name": "List all transactions (Global)",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "{{transactions_url}}/transactions?since=1703241600&limit=10",
+                            "host": [
+                                "{{transactions_url}}"
+                            ],
+                            "path": [
+                                "transactions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "since",
+                                    "value": "1703241600",
+                                    "description": "Optional: unix timestamp"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Optional: max results"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
                     "name": "List transactions",
                     "request": {
                         "method": "GET",
                         "url": {
-                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions",
+                            "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions?since=1703241600&limit=10",
                             "host": [
                                 "{{transactions_url}}"
                             ],
@@ -266,6 +293,18 @@
                                 "accounts",
                                 "{{account_id}}",
                                 "transactions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "since",
+                                    "value": "1703241600",
+                                    "description": "Optional: unix timestamp"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Optional: max results"
+                                }
                             ]
                         }
                     }
@@ -282,7 +321,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"id\": \"{{transaction_id}}\",\n  \"time\": 1703241600,\n  \"description\": \"Coffee\",\n  \"amount\": -5000,\n  \"operation_amount\": -5000,\n  \"balance\": 95000,\n  \"currency\": {\n    \"code\": 980,\n    \"name\": \"UAH\"\n  },\n  \"mcc_code\": 5812\n}\n"
+                            "raw": "{\n  \"id\": \"{{transaction_id}}\",\n  \"user_id\": \"{{user_id}}\",\n  \"account_id\": \"{{account_id}}\",\n  \"time\": 1703241600,\n  \"description\": \"Coffee\",\n  \"amount\": -5000,\n  \"operation_amount\": -5000,\n  \"balance\": 95000,\n  \"currency\": {\n    \"code\": 980,\n    \"name\": \"UAH\"\n  },\n  \"mcc_code\": 5812\n}\n"
                         },
                         "url": {
                             "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions",

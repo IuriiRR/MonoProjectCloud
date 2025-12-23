@@ -26,6 +26,7 @@ def _resolve_server_timestamps(value: Any) -> Any:
 class FakeDocumentSnapshot:
     id: str
     _data: Optional[Dict[str, Any]]
+    reference: "FakeDocumentRef"
 
     @property
     def exists(self) -> bool:
@@ -43,6 +44,10 @@ class FakeDocumentRef:
         self._collection = collection
         self._id = doc_id
 
+    @property
+    def path(self) -> str:
+        return f"{self._collection._name}/{self._id}"
+
     def collection(self, name: str) -> "FakeCollectionRef":
         # Support subcollections by treating the fully-qualified collection path as the key.
         # Example: users/u1/accounts
@@ -51,7 +56,7 @@ class FakeDocumentRef:
 
     def get(self) -> FakeDocumentSnapshot:
         data = self._collection._docs.get(self._id)
-        return FakeDocumentSnapshot(id=self._id, _data=data)
+        return FakeDocumentSnapshot(id=self._id, _data=data, reference=self)
 
     def set(self, data: Dict[str, Any]) -> None:
         self._collection._docs[self._id] = _resolve_server_timestamps(data)
@@ -117,7 +122,8 @@ class FakeQuery:
             docs = docs[: self._limit_n]
 
         for doc_id, data in docs:
-            yield FakeDocumentSnapshot(id=doc_id, _data=data)
+            ref = self._collection.document(doc_id)
+            yield FakeDocumentSnapshot(id=doc_id, _data=data, reference=ref)
 
 
 class FakeCollectionRef:
@@ -148,3 +154,72 @@ class FakeFirestore:
 
     def collection(self, name: str) -> FakeCollectionRef:
         return FakeCollectionRef(self, name)
+
+    def collection_group(self, collection_id: str) -> FakeCollectionGroup:
+        return FakeCollectionGroup(self, collection_id)
+
+
+class FakeCollectionGroup:
+    def __init__(self, db: FakeFirestore, collection_id: str):
+        self._db = db
+        self._collection_id = collection_id
+        self._where_clauses: List[tuple] = []
+        self._order_by_clauses: List[tuple] = []
+        self._limit_n: Optional[int] = None
+
+    def where(self, field: str, op: str, value: Any) -> FakeCollectionGroup:
+        self._where_clauses.append((field, op, value))
+        return self
+
+    def order_by(self, field: str, direction: str = "ASCENDING") -> FakeCollectionGroup:
+        self._order_by_clauses.append((field, direction))
+        return self
+
+    def limit(self, n: int) -> FakeCollectionGroup:
+        self._limit_n = n
+        return self
+
+    def stream(self) -> Iterable[FakeDocumentSnapshot]:
+        all_docs = []
+        for coll_name, docs in self._db._collections.items():
+            # Match if collection name is collection_id or ends with /collection_id
+            if coll_name == self._collection_id or coll_name.endswith(
+                f"/{self._collection_id}"
+            ):
+                coll_ref = FakeCollectionRef(self._db, coll_name)
+                for doc_id, data in docs.items():
+                    all_docs.append((doc_id, dict(data), coll_ref))
+
+        # Apply filters
+        docs = all_docs
+
+        # Apply WHERE
+        for field, op, value in self._where_clauses:
+            if op == "==":
+                docs = [d for d in docs if d[1].get(field) == value]
+            elif op == ">=":
+                docs = [d for d in docs if d[1].get(field) >= value]
+            elif op == "<=":
+                docs = [d for d in docs if d[1].get(field) <= value]
+            elif op == ">":
+                docs = [d for d in docs if d[1].get(field) > value]
+            elif op == "<":
+                docs = [d for d in docs if d[1].get(field) < value]
+
+        # Apply ORDER BY
+        if self._order_by_clauses:
+            field, direction = self._order_by_clauses[0]
+            reverse = direction == "DESCENDING"
+            docs = sorted(
+                [d for d in docs if field in d[1]],
+                key=lambda x: x[1][field],
+                reverse=reverse,
+            )
+
+        # Apply LIMIT
+        if self._limit_n is not None:
+            docs = docs[: self._limit_n]
+
+        for doc_id, data, coll_ref in docs:
+            ref = coll_ref.document(doc_id)
+            yield FakeDocumentSnapshot(id=doc_id, _data=data, reference=ref)

@@ -76,6 +76,7 @@ def transactions_api(request):
             {
                 "service": "transactions_api",
                 "endpoints": [
+                    "GET /transactions",
                     "GET /users/{user_id}/accounts/{account_id}/transactions",
                     "POST /users/{user_id}/accounts/{account_id}/transactions",
                     "GET /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}",
@@ -84,6 +85,45 @@ def transactions_api(request):
                 ],
             }
         )
+
+    db = get_db()
+
+    # GET /transactions (Global collection group query)
+    if len(parts) == 1 and parts[0] == "transactions":
+        if request.method == "GET":
+            query = db.collection_group("transactions").order_by(
+                "time", direction=firestore.Query.DESCENDING
+            )
+
+            # Optional filters
+            since = request.args.get("since")
+            if since and since.isdigit():
+                query = query.where("time", ">=", int(since))
+
+            time_gte = request.args.get("time_gte")
+            if time_gte and time_gte.isdigit():
+                query = query.where("time", ">=", int(time_gte))
+
+            limit = request.args.get("limit")
+            if limit and limit.isdigit():
+                query = query.limit(int(limit))
+
+            docs = query.stream()
+            transactions = []
+            for d in docs:
+                data = d.to_dict() or {}
+                # Fallback for old data: extract user_id and account_id from document path
+                # Path: users/{user_id}/accounts/{account_id}/transactions/{transaction_id}
+                if "user_id" not in data or "account_id" not in data:
+                    path_parts = d.reference.path.split("/")
+                    if len(path_parts) >= 4:
+                        data["user_id"] = data.get("user_id") or path_parts[1]
+                        data["account_id"] = data.get("account_id") or path_parts[3]
+                
+                transactions.append(transaction_doc_to_dict(d.id, data))
+            
+            return _json_response({"transactions": transactions})
+        return _error("Method not allowed", 405)
 
     if parts[0] != "users":
         return _error("Not found", 404)
@@ -94,7 +134,6 @@ def transactions_api(request):
     user_id = parts[1]
     account_id = parts[3]
 
-    db = get_db()
     _, acc_err = _require_account(db, user_id, account_id)
     if acc_err:
         return acc_err
@@ -136,6 +175,13 @@ def transactions_api(request):
                 return err
             if body is None:
                 return _error("JSON body required", 400)
+            
+            # Inject denormalized IDs from path if missing from body
+            if "user_id" not in body:
+                body["user_id"] = user_id
+            if "account_id" not in body:
+                body["account_id"] = account_id
+
             try:
                 payload = TransactionCreate.model_validate(body)
             except ValidationError as e:

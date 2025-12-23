@@ -127,3 +127,52 @@ def test_delete_transaction(app):
     assert resp2.status_code == 404
 
 
+def test_global_transactions_endpoint(app):
+    # Setup: 2 users, each with 1 account and 1 transaction
+    _create_user_and_account(app, "user1", "acc1")
+    _create_user_and_account(app, "user2", "acc2")
+
+    # Transaction for user1
+    with app.test_request_context(
+        "/users/user1/accounts/acc1/transactions",
+        method="POST",
+        json={"id": "t1", "time": 100, "amount": -10, "balance": 90, "currency": {"code": 980}},
+    ):
+        transactions_api(flask_request)
+
+    # Transaction for user2
+    with app.test_request_context(
+        "/users/user2/accounts/acc2/transactions",
+        method="POST",
+        json={"id": "t2", "time": 200, "amount": -20, "balance": 80, "currency": {"code": 980}},
+    ):
+        transactions_api(flask_request)
+
+    # Test GET /transactions
+    with app.test_request_context("/transactions", method="GET"):
+        resp = transactions_api(flask_request)
+    
+    assert resp.status_code == 200
+    body = _json(resp)
+    txs = body["transactions"]
+    
+    assert len(txs) == 2
+    # Should be sorted by time DESC: t2 then t1
+    assert txs[0]["id"] == "t2"
+    assert txs[0]["user_id"] == "user2"
+    assert txs[0]["account_id"] == "acc2"
+    
+    assert txs[1]["id"] == "t1"
+    assert txs[1]["user_id"] == "user1"
+    assert txs[1]["account_id"] == "acc1"
+
+    # Test filtering
+    with app.test_request_context("/transactions", method="GET", query_string={"since": "150"}):
+        resp = transactions_api(flask_request)
+    
+    assert resp.status_code == 200
+    txs = _json(resp)["transactions"]
+    assert len(txs) == 1
+    assert txs[0]["id"] == "t2"
+
+

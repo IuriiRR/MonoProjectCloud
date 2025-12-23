@@ -9,6 +9,10 @@ class TransactionCreate(BaseModel):
     # Document ID under users/{user_id}/accounts/{account_id}/transactions
     id: str = Field(min_length=1)
 
+    # Denormalized IDs for collection group queries
+    user_id: str = Field(min_length=1)
+    account_id: str = Field(min_length=1)
+
     # Monobank statement item fields (MVP)
     time: int
     description: Optional[str] = None

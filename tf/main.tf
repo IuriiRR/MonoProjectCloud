@@ -188,4 +188,20 @@ resource "google_cloud_run_service_iam_member" "transactions_api_invoker" {
   member   = "allUsers"
 }
 
+resource "google_firestore_index" "transactions_time" {
+  project     = var.project_id
+  collection  = "transactions"
+  query_scope = "COLLECTION_GROUP"
+
+  fields {
+    field_path = "time"
+    order      = "DESCENDING"
+  }
+
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
 
