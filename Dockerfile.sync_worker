@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install deps first (better layer caching)
+COPY functions/sync_worker/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy function source
+COPY functions/sync_worker /app
+
+EXPOSE 8084
+
+# Default envs; override in docker-compose / deployment
+ENV PORT=8084
+
+CMD ["functions-framework", "--target", "sync_worker", "--source", "main.py", "--port", "8084", "--debug"]
+

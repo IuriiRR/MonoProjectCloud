@@ -3,6 +3,7 @@ region       = "europe-west1"
 function_name = "users-api"
 accounts_function_name = "accounts-api"
 transactions_function_name = "transactions-api"
+sync_worker_function_name = "sync-worker"
 
 # Must be globally unique
 bucket_name  = "your-gcp-project-id-functions-src"

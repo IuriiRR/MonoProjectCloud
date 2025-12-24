@@ -29,6 +29,10 @@
         {
             "key": "transaction_id",
             "value": "t1"
+        },
+        {
+            "key": "sync_url",
+            "value": "http://localhost:8084"
         }
     ],
     "item": [
@@ -460,6 +464,37 @@
                                 "accounts",
                                 "{{account_id}}",
                                 "transactions"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "sync_worker",
+            "item": [
+                {
+                    "name": "Sync all accounts",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}\n"
+                        },
+                        "url": {
+                            "raw": "{{sync_url}}/sync/accounts",
+                            "host": [
+                                "{{sync_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "accounts"
                             ]
                         }
                     }

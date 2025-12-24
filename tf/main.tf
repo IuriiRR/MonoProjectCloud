@@ -46,6 +46,18 @@ resource "google_storage_bucket_object" "transactions_api_src" {
   source = data.archive_file.transactions_api_zip.output_path
 }
 
+data "archive_file" "sync_worker_zip" {
+  type        = "zip"
+  source_dir  = var.sync_worker_source_dir
+  output_path = "${path.module}/.build/sync_worker.zip"
+}
+
+resource "google_storage_bucket_object" "sync_worker_src" {
+  name   = "sync_worker/${data.archive_file.sync_worker_zip.output_sha}.zip"
+  bucket = google_storage_bucket.functions_src.name
+  source = data.archive_file.sync_worker_zip.output_path
+}
+
 resource "google_service_account" "users_api" {
   account_id   = "users-api-sa"
   display_name = "users-api Cloud Function service account"
@@ -59,6 +71,11 @@ resource "google_service_account" "accounts_api" {
 resource "google_service_account" "transactions_api" {
   account_id   = "transactions-api-sa"
   display_name = "transactions-api Cloud Function service account"
+}
+
+resource "google_service_account" "sync_worker" {
+  account_id   = "sync-worker-sa"
+  display_name = "sync-worker Cloud Function service account"
 }
 
 resource "google_project_iam_member" "users_api_firestore_access" {
@@ -77,6 +94,12 @@ resource "google_project_iam_member" "transactions_api_firestore_access" {
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.transactions_api.email}"
+}
+
+resource "google_project_iam_member" "sync_worker_firestore_access" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.sync_worker.email}"
 }
 
 resource "google_cloudfunctions2_function" "users_api" {
@@ -166,6 +189,37 @@ resource "google_cloudfunctions2_function" "transactions_api" {
   }
 }
 
+resource "google_cloudfunctions2_function" "sync_worker" {
+  name     = var.sync_worker_function_name
+  location = var.region
+
+  build_config {
+    runtime     = var.runtime
+    entry_point = var.sync_worker_entry_point
+
+    source {
+      storage_source {
+        bucket = google_storage_bucket.functions_src.name
+        object = google_storage_bucket_object.sync_worker_src.name
+      }
+    }
+  }
+
+  service_config {
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    max_instance_count    = 3
+    ingress_settings      = "ALLOW_ALL"
+    service_account_email = google_service_account.sync_worker.email
+
+    environment_variables = {
+      FIRESTORE_PROJECT_ID = var.project_id
+      USERS_API_URL        = google_cloudfunctions2_function.users_api.service_config[0].uri
+      ACCOUNTS_API_URL     = google_cloudfunctions2_function.accounts_api.service_config[0].uri
+    }
+  }
+}
+
 # Public (unauthenticated) invoke for now. Tighten later with IAM / auth.
 resource "google_cloud_run_service_iam_member" "users_api_invoker" {
   location = google_cloudfunctions2_function.users_api.location
@@ -188,19 +242,28 @@ resource "google_cloud_run_service_iam_member" "transactions_api_invoker" {
   member   = "allUsers"
 }
 
-resource "google_firestore_index" "transactions_time" {
-  project     = var.project_id
-  collection  = "transactions"
-  query_scope = "COLLECTION_GROUP"
+resource "google_cloud_run_service_iam_member" "sync_worker_invoker" {
+  location = google_cloudfunctions2_function.sync_worker.location
+  service  = google_cloudfunctions2_function.sync_worker.service_config[0].service
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
 
-  fields {
-    field_path = "time"
-    order      = "DESCENDING"
-  }
+resource "google_firestore_field" "transactions_time" {
+  project    = var.project_id
+  database   = "(default)"
+  collection = "transactions"
+  field      = "time"
 
-  fields {
-    field_path = "__name__"
-    order      = "DESCENDING"
+  index_config {
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION_GROUP"
+    }
+    indexes {
+      order       = "DESCENDING"
+      query_scope = "COLLECTION_GROUP"
+    }
   }
 }
 

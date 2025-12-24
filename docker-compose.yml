@@ -49,3 +49,19 @@ services:
       - firestore
     ports:
       - "8083:8083"
+
+  sync_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync_worker
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+      - FIRESTORE_PROJECT_ID=demo-monobank
+      - USERS_API_URL=http://users_api:8081
+      - ACCOUNTS_API_URL=http://accounts_api:8082
+    depends_on:
+      - firestore
+      - users_api
+      - accounts_api
+    ports:
+      - "8084:8084"
