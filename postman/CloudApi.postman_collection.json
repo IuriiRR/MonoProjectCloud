@@ -33,6 +33,10 @@
         {
             "key": "sync_url",
             "value": "http://localhost:8084"
+        },
+        {
+            "key": "sync_transactions_url",
+            "value": "http://localhost:8085"
         }
     ],
     "item": [
@@ -495,6 +499,37 @@
                             "path": [
                                 "sync",
                                 "accounts"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "sync_transactions",
+            "item": [
+                {
+                    "name": "Sync user transactions",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"mono_token\": \"your_token_here\",\n  \"days\": 30\n}\n"
+                        },
+                        "url": {
+                            "raw": "{{sync_transactions_url}}/sync/transactions",
+                            "host": [
+                                "{{sync_transactions_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "transactions"
                             ]
                         }
                     }

@@ -18,4 +18,9 @@ output "sync_worker_url" {
   value       = google_cloudfunctions2_function.sync_worker.service_config[0].uri
 }
 
+output "sync_transactions_url" {
+  description = "HTTPS URL of the deployed sync transactions function."
+  value       = google_cloudfunctions2_function.sync_transactions.service_config[0].uri
+}
+
 

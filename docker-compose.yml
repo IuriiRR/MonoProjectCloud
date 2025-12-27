@@ -59,9 +59,27 @@ services:
       - FIRESTORE_PROJECT_ID=demo-monobank
       - USERS_API_URL=http://users_api:8081
       - ACCOUNTS_API_URL=http://accounts_api:8082
+      - SYNC_TRANSACTIONS_URL=http://sync_transactions:8085
     depends_on:
       - firestore
       - users_api
       - accounts_api
+      - sync_transactions
     ports:
       - "8084:8084"
+
+  sync_transactions:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync_transactions
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+      - FIRESTORE_PROJECT_ID=demo-monobank
+      - ACCOUNTS_API_URL=http://accounts_api:8082
+      - TRANSACTIONS_API_URL=http://transactions_api:8083
+    depends_on:
+      - firestore
+      - accounts_api
+      - transactions_api
+    ports:
+      - "8085:8085"

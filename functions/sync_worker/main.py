@@ -1,8 +1,10 @@
 import json
 import os
-import requests
+import threading
 from typing import Any, Dict, List, Tuple
+
 import functions_framework
+import requests
 from flask import Response, make_response
 from loguru import logger
 
@@ -14,6 +16,7 @@ except Exception:
 
 USERS_API_URL = os.environ.get("USERS_API_URL", "http://users_api:8081")
 ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
+SYNC_TRANSACTIONS_URL = os.environ.get("SYNC_TRANSACTIONS_URL", "http://sync_transactions:8085")
 MONO_API_URL = "https://api.monobank.ua"
 
 # Simple currency mapping as a fallback since seed/currency.json is missing
@@ -37,6 +40,21 @@ def _error(message: str, status: int = 400, extra: Dict[str, Any] | None = None)
     if extra:
         body.update(extra)
     return _json_response(body, status=status)
+
+def _trigger_tx_sync(user_id: str, token: str):
+    logger.info(f"Triggering transaction sync for user {user_id}")
+    try:
+        tx_sync_resp = requests.post(
+            f"{SYNC_TRANSACTIONS_URL}/sync/transactions",
+            json={"user_id": user_id, "mono_token": token},
+            timeout=300 # Wait up to 5 mins in the background thread
+        )
+        if not tx_sync_resp.ok:
+            logger.warning(f"Failed to trigger transaction sync for user {user_id}: {tx_sync_resp.text}")
+        else:
+            logger.info(f"Transaction sync finished for user {user_id}")
+    except Exception as tx_e:
+        logger.error(f"Error during background transaction sync for user {user_id}: {str(tx_e)}")
 
 @functions_framework.http
 def sync_worker(request):
@@ -137,6 +155,9 @@ def sync_worker(request):
             
             processed_users += 1
             total_accounts_synced += len(accounts_to_sync)
+
+            # 4. Trigger transaction sync for this user (async)
+            threading.Thread(target=_trigger_tx_sync, args=(user_id, token)).start()
 
         return _json_response({
             "status": "success",

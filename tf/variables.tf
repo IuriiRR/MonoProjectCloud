@@ -87,6 +87,24 @@ variable "sync_worker_source_dir" {
   default     = "../functions/sync_worker"
 }
 
+variable "sync_transactions_function_name" {
+  type        = string
+  description = "Cloud Function name (sync_transactions)."
+  default     = "sync-transactions"
+}
+
+variable "sync_transactions_entry_point" {
+  type        = string
+  description = "Python function entry point (sync_transactions)."
+  default     = "sync_transactions"
+}
+
+variable "sync_transactions_source_dir" {
+  type        = string
+  description = "Directory containing the function source + requirements.txt (sync_transactions)."
+  default     = "../functions/sync_transactions"
+}
+
 variable "bucket_name" {
   type        = string
   description = "GCS bucket to store function source archive."

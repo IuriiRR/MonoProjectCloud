@@ -24,7 +24,8 @@ def patch_users_api_db(monkeypatch, fake_db):
     import functions.accounts_api.main as accounts_main
     import functions.transactions_api.main as transactions_main
     import functions.users_api.main as users_main
-    import functions.sync_worker.main as sync_main
+    import functions.sync_worker.main as sync_worker_main
+    import functions.sync_transactions.main as sync_transactions_main
     from tests.fakes import firestore as fake_firestore
 
     monkeypatch.setattr(users_main, "get_db", lambda: fake_db)
@@ -42,7 +43,4 @@ def patch_users_api_db(monkeypatch, fake_db):
         transactions_main.firestore, "SERVER_TIMESTAMP", fake_firestore.SERVER_TIMESTAMP
     )
 
-    # sync_main doesn't use get_db directly but it might in the future
-    # monkeypatch.setattr(sync_main, "get_db", lambda: fake_db)
-
-
+    # Sync workers don't use get_db directly but it's good practice to have them ready
