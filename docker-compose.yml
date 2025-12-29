@@ -9,10 +9,11 @@ services:
       - .:/workspace
     ports:
       - "8080:8080"
+      - "9099:9099"
       - "4000:4000"
       - "4500:4500"
     command: >
-      sh -c "firebase emulators:start --only firestore --project demo-monobank --import=./.emulator-data --export-on-exit"
+      sh -c "firebase emulators:start --only firestore,auth --project demo-monobank --import=./.emulator-data --export-on-exit"
 
   users_api:
     build:
@@ -83,3 +84,22 @@ services:
       - transactions_api
     ports:
       - "8085:8085"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      - VITE_USERS_API_URL=http://localhost:8081
+      - VITE_ACCOUNTS_API_URL=http://localhost:8082
+      - VITE_TRANSACTIONS_API_URL=http://localhost:8083
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - users_api
+      - accounts_api
+      - transactions_api
+      - firestore

@@ -77,6 +77,8 @@ def transactions_api(request):
                 "service": "transactions_api",
                 "endpoints": [
                     "GET /transactions",
+                    "GET /users/{user_id}/transactions",
+                    "GET /users/{user_id}/charts/balance",
                     "GET /users/{user_id}/accounts/{account_id}/transactions",
                     "POST /users/{user_id}/accounts/{account_id}/transactions",
                     "GET /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}",
@@ -90,10 +92,13 @@ def transactions_api(request):
 
     # GET /transactions (Global collection group query)
     if len(parts) == 1 and parts[0] == "transactions":
+        # ... existing global query code ...
         if request.method == "GET":
+            # ... existing query logic ...
             query = db.collection_group("transactions").order_by(
                 "time", direction=firestore.Query.DESCENDING
             )
+            # ... filter logic ...
 
             # Optional filters
             since = request.args.get("since")
@@ -127,6 +132,53 @@ def transactions_api(request):
 
     if parts[0] != "users":
         return _error("Not found", 404)
+
+    user_id = parts[1]
+
+    # GET /users/{user_id}/transactions
+    if len(parts) == 3 and parts[2] == "transactions":
+        if request.method == "GET":
+            query = db.collection_group("transactions").where("user_id", "==", user_id).order_by(
+                "time", direction=firestore.Query.DESCENDING
+            )
+            
+            limit = request.args.get("limit")
+            if limit and limit.isdigit():
+                query = query.limit(int(limit))
+
+            docs = query.stream()
+            transactions = [transaction_doc_to_dict(d.id, d.to_dict() or {}) for d in docs]
+            return _json_response({"transactions": transactions})
+        return _error("Method not allowed", 405)
+
+    # GET /users/{user_id}/charts/balance
+    if len(parts) == 4 and parts[2] == "charts" and parts[3] == "balance":
+        if request.method == "GET":
+            # Fetch all transactions for the user to build the chart
+            query = db.collection_group("transactions").where("user_id", "==", user_id).order_by(
+                "time", direction=firestore.Query.ASCENDING
+            )
+            
+            docs = query.stream()
+            
+            # Structure data for charts: { account_id: [ {time, balance}, ... ] }
+            chart_data = {}
+            for d in docs:
+                data = d.to_dict() or {}
+                acc_id = data.get("account_id")
+                if not acc_id:
+                    continue
+                
+                if acc_id not in chart_data:
+                    chart_data[acc_id] = []
+                
+                chart_data[acc_id].append({
+                    "time": data.get("time"),
+                    "balance": data.get("balance")
+                })
+            
+            return _json_response({"charts": chart_data})
+        return _error("Method not allowed", 405)
 
     if len(parts) < 5 or parts[2] != "accounts" or parts[4] != "transactions":
         return _error("Not found", 404)
