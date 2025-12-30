@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
 import { fetchUserProfile, updateUserProfile, UserProfile } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Key } from 'lucide-react';
+import { ArrowLeft, Save, Key, RefreshCcw } from 'lucide-react';
 
 interface SettingsProps {
   user: User;

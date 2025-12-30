@@ -2,6 +2,7 @@ import React from 'react';
 import { signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 import { Link, useNavigate } from 'react-router-dom';
+import { createAccount, createUserProfile } from '../services/api';
 
 const Login = () => {
   const [email, setEmail] = React.useState('');
@@ -11,7 +12,26 @@ const Login = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+
+      // Ensure backend profile exists (prod requires this for accounts/transactions APIs)
+      await createUserProfile(user.uid, user.displayName || 'New User');
+
+      // Optional: create an initial account if missing (safe if it already exists)
+      try {
+        await createAccount(user.uid, {
+          id: 'main-account',
+          type: 'card',
+          currency: { code: 'UAH', symbol: '₴' },
+          balance: 0,
+          title: 'Main Account',
+          is_active: true
+        });
+      } catch (_e) {
+        // Ignore if already exists
+      }
+
       navigate('/');
     } catch (err: any) {
       setError(err.message);

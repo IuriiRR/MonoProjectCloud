@@ -1,6 +1,96 @@
 provider "google" {
   project = var.project_id
   region  = var.region
+
+  # Fix for ADC-based auth (user credentials): some APIs (e.g. identitytoolkit)
+  # require a quota project. This forces requests to bill/use the target project.
+  user_project_override = true
+  billing_project       = var.project_id
+}
+
+provider "google-beta" {
+  project = var.project_id
+  region  = var.region
+
+  user_project_override = true
+  billing_project       = var.project_id
+}
+
+# Enable Firebase services
+resource "google_project_service" "firebase" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "firebase.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "hosting" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "firebasehosting.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "identitytoolkit" {
+  provider = google-beta
+  project  = var.project_id
+  service  = "identitytoolkit.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_firebase_project" "default" {
+  provider = google-beta
+  project  = var.project_id
+  depends_on = [google_project_service.firebase]
+}
+
+# Firebase Web App for the frontend
+resource "google_firebase_web_app" "frontend" {
+  provider     = google-beta
+  project      = var.project_id
+  display_name = "CloudApi Frontend"
+  deletion_policy = "DELETE"
+  depends_on   = [google_firebase_project.default]
+}
+
+# Fetch the Firebase Web App config (API key, etc.) for the frontend
+data "google_firebase_web_app_config" "frontend" {
+  provider = google-beta
+  project  = var.project_id
+  web_app_id = google_firebase_web_app.frontend.app_id
+}
+
+# Hosting site (if not already created with the project)
+resource "google_firebase_hosting_site" "main" {
+  provider = google-beta
+  project  = var.project_id
+  site_id  = var.project_id # Using project_id as site_id is standard
+  app_id   = google_firebase_web_app.frontend.app_id
+  depends_on = [google_firebase_web_app.frontend]
+}
+
+# Identity Platform / Firebase Auth configuration
+# This is what makes Google sign-in work on Firebase Hosting domains.
+resource "google_identity_platform_config" "default" {
+  provider = google-beta
+  project  = var.project_id
+
+  authorized_domains = [
+    "${var.project_id}.web.app",
+    "${var.project_id}.firebaseapp.com",
+  ]
+}
+
+resource "google_identity_platform_default_supported_idp_config" "google" {
+  provider = google-beta
+  project  = var.project_id
+  idp_id   = "google.com"
+  enabled  = true
+
+  client_id     = var.google_oauth_client_id
+  client_secret = var.google_oauth_client_secret
+
+  depends_on = [google_identity_platform_config.default]
 }
 
 data "archive_file" "users_api_zip" {
@@ -337,6 +427,54 @@ resource "google_firestore_field" "transactions_time" {
       order       = "DESCENDING"
       query_scope = "COLLECTION_GROUP"
     }
+    # Some projects end up with a "single-field index exemption" at COLLECTION scope.
+    # Explicitly enable COLLECTION scope indexes too, since the API uses:
+    #   /users/{user_id}/accounts/{account_id}/transactions  -> order_by(time desc)
+    indexes {
+      order       = "ASCENDING"
+      query_scope = "COLLECTION"
+    }
+    indexes {
+      order       = "DESCENDING"
+      query_scope = "COLLECTION"
+    }
+  }
+}
+
+# Composite indexes needed for transactions queries:
+# - /users/{user_id}/transactions  (where user_id == X, order by time desc)
+# - /users/{user_id}/charts/balance (where user_id == X, order by time asc)
+resource "google_firestore_index" "transactions_user_time_asc" {
+  project     = var.project_id
+  database    = "(default)"
+  collection  = "transactions"
+  query_scope = "COLLECTION_GROUP"
+
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "time"
+    order      = "ASCENDING"
+  }
+}
+
+resource "google_firestore_index" "transactions_user_time_desc" {
+  project     = var.project_id
+  database    = "(default)"
+  collection  = "transactions"
+  query_scope = "COLLECTION_GROUP"
+
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "time"
+    order      = "DESCENDING"
   }
 }
 

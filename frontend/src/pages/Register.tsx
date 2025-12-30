@@ -3,6 +3,7 @@ import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../services/firebase';
 import { Link, useNavigate } from 'react-router-dom';
 import { createUserProfile, createAccount } from '../services/api';
+import { RefreshCcw } from 'lucide-react';
 
 const Register = () => {
   const [error, setError] = React.useState('');

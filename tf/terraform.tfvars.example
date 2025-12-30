@@ -9,4 +9,9 @@ sync_transactions_function_name = "sync-transactions"
 # Must be globally unique
 bucket_name  = "your-gcp-project-id-functions-src"
 
+# Optional but recommended (needed if you want Terraform to enable Google sign-in via Identity Platform).
+# Create an OAuth 2.0 Client ID in Google Cloud Console (APIs & Services -> Credentials) and paste values here.
+google_oauth_client_id     = "YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com"
+google_oauth_client_secret = "YOUR_OAUTH_CLIENT_SECRET"
+
 

@@ -110,4 +110,17 @@ variable "bucket_name" {
   description = "GCS bucket to store function source archive."
 }
 
+variable "google_oauth_client_id" {
+  type        = string
+  description = "OAuth Client ID used for Google sign-in (Identity Platform / Firebase Auth)."
+  default     = ""
+}
+
+variable "google_oauth_client_secret" {
+  type        = string
+  description = "OAuth Client Secret used for Google sign-in (Identity Platform / Firebase Auth)."
+  sensitive   = true
+  default     = ""
+}
+
 
