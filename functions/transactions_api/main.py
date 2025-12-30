@@ -3,8 +3,22 @@ from typing import Any, Dict, Tuple
 
 import functions_framework
 from flask import Response, make_response, request
-from google.cloud import firestore
-from google.api_core.exceptions import FailedPrecondition
+try:  # pragma: no cover
+    from google.cloud import firestore  # type: ignore
+except Exception:  # pragma: no cover
+    class _FirestoreShim:
+        SERVER_TIMESTAMP = object()
+
+        class Query:
+            ASCENDING = "ASCENDING"
+            DESCENDING = "DESCENDING"
+
+    firestore = _FirestoreShim()  # type: ignore[assignment]
+
+try:  # pragma: no cover
+    from google.api_core.exceptions import FailedPrecondition  # type: ignore
+except Exception:  # pragma: no cover
+    FailedPrecondition = Exception  # type: ignore
 from pydantic import ValidationError
 
 # Support both "run as a package" (relative imports) and "run from this folder" (local imports).

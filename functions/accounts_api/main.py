@@ -3,7 +3,13 @@ from typing import Any, Dict, Tuple
 
 import functions_framework
 from flask import Response, make_response
-from google.cloud import firestore
+try:  # pragma: no cover
+    from google.cloud import firestore  # type: ignore
+except Exception:  # pragma: no cover
+    class _FirestoreShim:
+        SERVER_TIMESTAMP = object()
+
+    firestore = _FirestoreShim()  # type: ignore[assignment]
 from pydantic import ValidationError
 
 # Support both "run as a package" (relative imports) and "run from this folder" (local imports).

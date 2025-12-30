@@ -7,7 +7,10 @@ def mock_requests():
     with patch("functions.sync_worker.main.requests") as mock:
         yield mock
 
-def test_sync_accounts_success(app, mock_requests):
+def test_sync_accounts_success(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
     # 1. Mock users_api/users response
     mock_users_resp = MagicMock()
     mock_users_resp.ok = True
@@ -53,6 +56,7 @@ def test_sync_accounts_success(app, mock_requests):
         class MockRequest:
             method = "POST"
             path = "/sync/accounts"
+            headers = {"X-Internal-Api-Key": "test-internal-key"}
             def get_json(self, silent=False):
                 return {}
 
@@ -68,7 +72,10 @@ def test_sync_accounts_success(app, mock_requests):
     assert data["processed_users"] == 1 # Only u1
     assert data["total_accounts_synced"] == 2 # a1 and j1
 
-def test_sync_accounts_not_found(app, mock_requests):
+def test_sync_accounts_not_found(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
     with app.app_context():
         class MockRequest:
             method = "POST"
@@ -77,7 +84,10 @@ def test_sync_accounts_not_found(app, mock_requests):
         response = sync_worker(MockRequest())
     assert response.status_code == 404
 
-def test_sync_accounts_wrong_method(app, mock_requests):
+def test_sync_accounts_wrong_method(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
     with app.app_context():
         class MockRequest:
             method = "GET"
@@ -86,3 +96,25 @@ def test_sync_accounts_wrong_method(app, mock_requests):
         response = sync_worker(MockRequest())
     assert response.status_code == 405
 
+
+def test_sync_accounts_requires_internal_key(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+
+    with app.app_context():
+        class MockRequest:
+            method = "POST"
+            path = "/sync/accounts"
+            headers = {}
+
+            def get_json(self, silent=False):
+                return {}
+
+            @property
+            def data(self):
+                return b"{}"
+
+        response = sync_worker(MockRequest())
+
+    assert response.status_code == 403

@@ -7,7 +7,10 @@ def mock_requests():
     with patch("functions.sync_transactions.main.requests") as mock:
         yield mock
 
-def test_sync_transactions_success(app, mock_requests):
+def test_sync_transactions_success(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
     # 1. Mock accounts_api response
     mock_acc_resp = MagicMock()
     mock_acc_resp.ok = True
@@ -45,6 +48,7 @@ def test_sync_transactions_success(app, mock_requests):
     with app.app_context():
         class MockRequest:
             method = "POST"
+            headers = {"X-Internal-Api-Key": "test-internal-key"}
             def get_json(self, silent=True):
                 return {"user_id": "u1", "mono_token": "token1"}
 
@@ -56,7 +60,10 @@ def test_sync_transactions_success(app, mock_requests):
     assert data["processed_accounts"] == 1
     assert data["total_transactions_synced"] == 1
 
-def test_sync_transactions_rate_limit(app, mock_requests):
+def test_sync_transactions_rate_limit(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
     # Mock rate limit then success
     mock_acc_resp = MagicMock(ok=True)
     mock_acc_resp.json.return_value = {"accounts": [{"id": "a1"}]}
@@ -70,6 +77,7 @@ def test_sync_transactions_rate_limit(app, mock_requests):
     with app.app_context():
         class MockRequest:
             method = "POST"
+            headers = {"X-Internal-Api-Key": "test-internal-key"}
             def get_json(self, silent=True):
                 return {"user_id": "u1", "mono_token": "token1"}
 
@@ -81,4 +89,20 @@ def test_sync_transactions_rate_limit(app, mock_requests):
     data = response.get_json()
     assert data["processed_accounts"] == 1
 
+
+def test_sync_transactions_requires_internal_key(app, mock_requests, monkeypatch):
+    monkeypatch.setenv("INTERNAL_API_KEY", "test-internal-key")
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+    with app.app_context():
+        class MockRequest:
+            method = "POST"
+            headers = {}
+
+            def get_json(self, silent=True):
+                return {"user_id": "u1", "mono_token": "token1"}
+
+        response = sync_transactions(MockRequest())
+
+    assert response.status_code == 403
 

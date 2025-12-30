@@ -18,7 +18,26 @@ except Exception:
 ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
 TRANSACTIONS_API_URL = os.environ.get("TRANSACTIONS_API_URL", "http://transactions_api:8083")
 MONO_API_URL = "https://api.monobank.ua"
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+
+def _is_truthy(v: str | None) -> bool:
+    return (v or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _internal_auth_ok(headers) -> bool:
+    # In prod, this should always be configured and required.
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    if not internal_api_key:
+        # Local/dev escape hatch (do NOT use in prod)
+        return _is_truthy(os.getenv("AUTH_DISABLED")) or os.getenv("AUTH_MODE", "enabled").lower() == "disabled"
+    presented = headers.get("X-Internal-Api-Key") or headers.get("X-Internal-API-Key")
+    return presented == internal_api_key
+
+
+def _require_internal(request) -> Response | None:
+    if _internal_auth_ok(getattr(request, "headers", {}) or {}):
+        return None
+    return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
 
 def _json_response(payload: Any, status: int = 200) -> Response:
     resp = make_response(json.dumps(payload, ensure_ascii=False), status)
@@ -50,6 +69,10 @@ def sync_transactions(request):
     if request.method != "POST":
         return _error("Method not allowed", 405)
 
+    auth_err = _require_internal(request)
+    if auth_err:
+        return auth_err
+
     try:
         body_json = request.get_json(silent=True) or {}
         try:
@@ -60,14 +83,16 @@ def sync_transactions(request):
         user_id = req.user_id
         token = req.mono_token
         days = req.days
-
-        headers = {}
-        if INTERNAL_API_KEY:
-            headers["X-Internal-Api-Key"] = INTERNAL_API_KEY
+        internal_headers: Dict[str, str] = {}
+        internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+        if internal_api_key:
+            internal_headers["X-Internal-Api-Key"] = internal_api_key
 
         # 1. Fetch accounts for this user
         logger.info(f"Fetching accounts for user {user_id} from {ACCOUNTS_API_URL}")
-        acc_resp = requests.get(f"{ACCOUNTS_API_URL}/users/{user_id}/accounts", headers=headers)
+        acc_resp = requests.get(
+            f"{ACCOUNTS_API_URL}/users/{user_id}/accounts", headers=internal_headers
+        )
         if not acc_resp.ok:
             return _error(f"Failed to fetch accounts: {acc_resp.text}", status=500)
         
@@ -94,13 +119,13 @@ def sync_transactions(request):
             logger.info(f"Syncing transactions for account {account_id} (user {user_id})")
             
             # 2. Fetch transactions from Monobank API
-            headers = {"X-Token": token}
+            mono_headers = {"X-Token": token}
             url = f"{MONO_API_URL}/personal/statement/{account_id}/{from_time}/{to_time}"
             
             success = False
             retries = 0
             while not success and retries < 2:
-                mono_resp = requests.get(url, headers=headers)
+                mono_resp = requests.get(url, headers=mono_headers)
                 
                 if mono_resp.status_code == 429:
                     logger.warning(f"Rate limited by Monobank. Waiting 60 seconds...")
@@ -142,7 +167,9 @@ def sync_transactions(request):
                 # 3. Put transactions to transactions_api with batch request
                 logger.info(f"Sending {len(mapped_txs)} transactions to {TRANSACTIONS_API_URL}")
                 tx_put_url = f"{TRANSACTIONS_API_URL}/users/{user_id}/accounts/{account_id}/transactions"
-                put_resp = requests.put(tx_put_url, json={"transactions": mapped_txs}, headers=headers)
+                put_resp = requests.put(
+                    tx_put_url, json={"transactions": mapped_txs}, headers=internal_headers
+                )
                 
                 if not put_resp.ok:
                     err_msg = f"Failed to update transactions for account {account_id}: {put_resp.text}"

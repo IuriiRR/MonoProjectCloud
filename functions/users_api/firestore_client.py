@@ -1,6 +1,10 @@
 import os
+from typing import Any
 
-from google.cloud import firestore
+try:  # pragma: no cover
+    from google.cloud import firestore  # type: ignore
+except Exception:  # pragma: no cover
+    firestore = None  # type: ignore[assignment]
 
 
 def get_project_id() -> str:
@@ -11,9 +15,11 @@ def get_project_id() -> str:
     )
 
 
-def get_db() -> firestore.Client:
+def get_db() -> Any:
     # Якщо ми в GCP, Client() сам знайде проект.
     # Якщо локально і є FIRESTORE_EMULATOR_HOST, він підключиться до нього.
+    if firestore is None:  # pragma: no cover
+        raise RuntimeError("google-cloud-firestore is required to use get_db()")
     if os.getenv("FIRESTORE_EMULATOR_HOST"):
         return firestore.Client(project=get_project_id())
     

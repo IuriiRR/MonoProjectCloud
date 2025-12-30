@@ -18,7 +18,6 @@ USERS_API_URL = os.environ.get("USERS_API_URL", "http://users_api:8081")
 ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
 SYNC_TRANSACTIONS_URL = os.environ.get("SYNC_TRANSACTIONS_URL", "http://sync_transactions:8085")
 MONO_API_URL = "https://api.monobank.ua"
-INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 
 # Simple currency mapping as a fallback since seed/currency.json is missing
 CURRENCY_MAP = {
@@ -26,6 +25,26 @@ CURRENCY_MAP = {
     840: {"code": 840, "name": "USD", "symbol": "$", "flag": "🇺🇸"},
     978: {"code": 978, "name": "EUR", "symbol": "€", "flag": "🇪🇺"},
 }
+
+def _is_truthy(v: str | None) -> bool:
+    return (v or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _internal_auth_ok(headers) -> bool:
+    # In prod, this should always be configured and required.
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    if not internal_api_key:
+        # Local/dev escape hatch (do NOT use in prod)
+        return _is_truthy(os.getenv("AUTH_DISABLED")) or os.getenv("AUTH_MODE", "enabled").lower() == "disabled"
+    presented = headers.get("X-Internal-Api-Key") or headers.get("X-Internal-API-Key")
+    return presented == internal_api_key
+
+
+def _require_internal(request) -> Response | None:
+    if _internal_auth_ok(getattr(request, "headers", {}) or {}):
+        return None
+    return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
 
 def get_currency_data(code: int) -> Dict[str, Any]:
     return CURRENCY_MAP.get(code, {"code": code, "name": "Unknown", "symbol": "", "flag": ""})
@@ -45,13 +64,14 @@ def _error(message: str, status: int = 400, extra: Dict[str, Any] | None = None)
 def _trigger_tx_sync(user_id: str, token: str):
     logger.info(f"Triggering transaction sync for user {user_id}")
     try:
-        headers = {}
-        if INTERNAL_API_KEY:
-            headers["X-Internal-Api-Key"] = INTERNAL_API_KEY
+        internal_headers: Dict[str, str] = {}
+        internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+        if internal_api_key:
+            internal_headers["X-Internal-Api-Key"] = internal_api_key
         tx_sync_resp = requests.post(
             f"{SYNC_TRANSACTIONS_URL}/sync/transactions",
             json={"user_id": user_id, "mono_token": token},
-            headers=headers,
+            headers=internal_headers,
             timeout=300 # Wait up to 5 mins in the background thread
         )
         if not tx_sync_resp.ok:
@@ -84,13 +104,18 @@ def sync_worker(request):
     if request.method != "POST":
         return _error("Method not allowed", 405)
 
+    auth_err = _require_internal(request)
+    if auth_err:
+        return auth_err
+
     try:
         # 1. Fetch all users from users_api
         logger.info(f"Fetching users from {USERS_API_URL}/users")
-        headers = {}
-        if INTERNAL_API_KEY:
-            headers["X-Internal-Api-Key"] = INTERNAL_API_KEY
-        users_resp = requests.get(f"{USERS_API_URL}/users", headers=headers)
+        internal_headers: Dict[str, str] = {}
+        internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+        if internal_api_key:
+            internal_headers["X-Internal-Api-Key"] = internal_api_key
+        users_resp = requests.get(f"{USERS_API_URL}/users", headers=internal_headers)
         if not users_resp.ok:
             return _error(f"Failed to fetch users: {users_resp.text}", status=500)
         
@@ -108,8 +133,8 @@ def sync_worker(request):
             logger.info(f"Syncing accounts for user {user_id}")
             
             # 2. Fetch accounts from Monobank API
-            headers = {"X-Token": token}
-            mono_resp = requests.get(f"{MONO_API_URL}/personal/client-info", headers=headers)
+            mono_headers = {"X-Token": token}
+            mono_resp = requests.get(f"{MONO_API_URL}/personal/client-info", headers=mono_headers)
             
             if not mono_resp.ok:
                 err_msg = f"Failed to fetch Monobank data for user {user_id}: {mono_resp.text}"
@@ -153,7 +178,7 @@ def sync_worker(request):
             put_resp = requests.put(
                 f"{ACCOUNTS_API_URL}/users/{user_id}/accounts",
                 json={"accounts": accounts_to_sync},
-                headers=headers
+                headers=internal_headers
             )
             
             if not put_resp.ok:
