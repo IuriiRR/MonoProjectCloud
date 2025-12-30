@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './services/firebase';
 import { ApiError, fetchUserProfile } from './services/api';
+import FullScreenLoader from './components/FullScreenLoader';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -24,6 +25,7 @@ function App() {
 
       // If user is authenticated with Firebase but not registered in our DB, force sign-out.
       (async () => {
+        setLoading(true);
         try {
           await fetchUserProfile(user.uid);
           setLoginError('');
@@ -45,7 +47,7 @@ function App() {
   }, []);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+    return <FullScreenLoader label="Signing you in…" />;
   }
 
   return (

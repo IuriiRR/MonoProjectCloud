@@ -10,6 +10,7 @@ type LoginProps = {
 
 const Login = ({ initialError }: LoginProps) => {
   const [error, setError] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -18,6 +19,8 @@ const Login = ({ initialError }: LoginProps) => {
 
   const handleGoogleLogin = async () => {
     try {
+      setError('');
+      setSubmitting(true);
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
@@ -30,10 +33,12 @@ const Login = ({ initialError }: LoginProps) => {
       if (err instanceof ApiError && err.status === 403 && err.code === 'USER_NOT_FOUND') {
         await signOut(auth);
         setError('User not found, please, register first');
+        setSubmitting(false);
         return;
       }
       await signOut(auth);
       setError(err?.message || 'Login failed');
+      setSubmitting(false);
     }
   };
 
@@ -51,10 +56,20 @@ const Login = ({ initialError }: LoginProps) => {
 
         <button 
           onClick={handleGoogleLogin}
-          className="flex items-center justify-center w-full py-3 bg-zinc-900 border border-white/10 rounded-lg hover:border-white/30 transition-all font-medium group"
+          disabled={submitting}
+          className="flex items-center justify-center w-full py-3 bg-zinc-900 border border-white/10 rounded-lg hover:border-white/30 transition-all font-medium group disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <div className="w-4 h-4 mr-3 bg-white text-black flex items-center justify-center rounded-sm text-[10px] font-black group-hover:scale-110 transition-transform">G</div>
-          Google Login
+          {submitting ? (
+            <>
+              <div className="w-4 h-4 mr-3 rounded-full border-2 border-white/20 border-t-white/90 animate-spin" />
+              Signing in…
+            </>
+          ) : (
+            <>
+              <div className="w-4 h-4 mr-3 bg-white text-black flex items-center justify-center rounded-sm text-[10px] font-black group-hover:scale-110 transition-transform">G</div>
+              Google Login
+            </>
+          )}
         </button>
 
         <p className="mt-10 text-sm text-center text-zinc-500">
