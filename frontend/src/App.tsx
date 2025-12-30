@@ -1,7 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './services/firebase';
+import { ApiError, fetchUserProfile } from './services/api';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
@@ -11,11 +12,34 @@ import Charts from './pages/Charts';
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loginError, setLoginError] = useState<string>('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
-      setLoading(false);
+      if (!user) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // If user is authenticated with Firebase but not registered in our DB, force sign-out.
+      (async () => {
+        try {
+          await fetchUserProfile(user.uid);
+          setLoginError('');
+          setUser(user);
+        } catch (e: any) {
+          if (e instanceof ApiError && e.status === 403 && e.code === 'USER_NOT_FOUND') {
+            setLoginError('User not found, please, register first');
+          } else {
+            setLoginError('Authentication failed. Please log in again.');
+          }
+          await signOut(auth);
+          setUser(null);
+        } finally {
+          setLoading(false);
+        }
+      })();
     });
     return unsubscribe;
   }, []);
@@ -27,7 +51,7 @@ function App() {
   return (
     <div className="min-h-screen bg-black text-white">
       <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" /> : <Login />} />
+        <Route path="/login" element={user ? <Navigate to="/" /> : <Login initialError={loginError} />} />
         <Route path="/register" element={user ? <Navigate to="/" /> : <Register />} />
         <Route 
           path="/settings" 

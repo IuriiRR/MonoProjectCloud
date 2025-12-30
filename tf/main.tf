@@ -240,6 +240,8 @@ resource "google_cloudfunctions2_function" "users_api" {
 
     environment_variables = {
       FIRESTORE_PROJECT_ID = var.project_id
+      AUTH_MODE            = var.auth_mode
+      INTERNAL_API_KEY     = var.internal_api_key
     }
   }
 }
@@ -269,6 +271,8 @@ resource "google_cloudfunctions2_function" "accounts_api" {
 
     environment_variables = {
       FIRESTORE_PROJECT_ID = var.project_id
+      AUTH_MODE            = var.auth_mode
+      INTERNAL_API_KEY     = var.internal_api_key
     }
   }
 }
@@ -298,6 +302,8 @@ resource "google_cloudfunctions2_function" "transactions_api" {
 
     environment_variables = {
       FIRESTORE_PROJECT_ID = var.project_id
+      AUTH_MODE            = var.auth_mode
+      INTERNAL_API_KEY     = var.internal_api_key
     }
   }
 }
@@ -330,6 +336,7 @@ resource "google_cloudfunctions2_function" "sync_worker" {
       USERS_API_URL         = google_cloudfunctions2_function.users_api.service_config[0].uri
       ACCOUNTS_API_URL      = google_cloudfunctions2_function.accounts_api.service_config[0].uri
       SYNC_TRANSACTIONS_URL = google_cloudfunctions2_function.sync_transactions.service_config[0].uri
+      INTERNAL_API_KEY      = var.internal_api_key
     }
   }
 
@@ -367,6 +374,7 @@ resource "google_cloudfunctions2_function" "sync_transactions" {
       FIRESTORE_PROJECT_ID = var.project_id
       ACCOUNTS_API_URL     = google_cloudfunctions2_function.accounts_api.service_config[0].uri
       TRANSACTIONS_API_URL = google_cloudfunctions2_function.transactions_api.service_config[0].uri
+      INTERNAL_API_KEY     = var.internal_api_key
     }
   }
 

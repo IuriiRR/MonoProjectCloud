@@ -9,10 +9,12 @@ from pydantic import ValidationError
 
 # Support both "run as a package" (relative imports) and "run from this folder" (local imports).
 try:  # pragma: no cover
+    from .auth import INTERNAL_UID, authenticate_request
     from .firestore_client import get_db
     from .models import TransactionCreate, TransactionUpdate
     from .serialization import transaction_doc_to_dict
 except Exception:  # pragma: no cover
+    from auth import INTERNAL_UID, authenticate_request
     from firestore_client import get_db
     from models import TransactionCreate, TransactionUpdate
     from serialization import transaction_doc_to_dict
@@ -50,6 +52,16 @@ def _require_account(db, user_id: str, account_id: str):
     if not account_doc.exists:
         return None, _error("Account not found", 404)
     return account_ref, None
+
+
+def _require_user(db, user_id: str, *, is_internal: bool):
+    user_ref = db.collection("users").document(user_id)
+    user_doc = user_ref.get()
+    if not user_doc.exists:
+        if is_internal:
+            return None, _error("User not found", 404)
+        return None, _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
+    return user_ref, None
 
 
 @functions_framework.http
@@ -95,6 +107,12 @@ def transactions_api(request):
         # GET /transactions (Global collection group query)
         if len(parts) == 1 and parts[0] == "transactions":
             if request.method == "GET":
+                uid, auth_err, auth_status = authenticate_request(request)
+                if auth_err:
+                    return _json_response(auth_err, status=auth_status or 401)
+                if uid != INTERNAL_UID:
+                    return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
                 query = db.collection_group("transactions").order_by(
                     "time", direction=firestore.Query.DESCENDING
                 )
@@ -133,6 +151,16 @@ def transactions_api(request):
             return _error("Not found", 404)
 
         user_id = parts[1]
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        is_internal = uid == INTERNAL_UID
+        if not is_internal and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        _, user_err = _require_user(db, user_id, is_internal=is_internal)
+        if user_err:
+            return user_err
 
         # GET /users/{user_id}/transactions
         if len(parts) == 3 and parts[2] == "transactions":

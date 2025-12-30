@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "b9c3b0a2-3b86-4a05-8b0e-19d2c41d0a5e",
         "name": "CloudApi",
-        "description": "Postman collection for CloudApi Firestore-backed Cloud Functions.\n\nSet variables:\n- users_url (e.g. http://localhost:8081 for users_api)\n- accounts_url (e.g. http://localhost:8082 for accounts_api)\n- user_id\n- account_id",
+        "description": "Postman collection for CloudApi Firestore-backed Cloud Functions.\n\nSet variables:\n- users_url (e.g. http://localhost:8081 for users_api)\n- accounts_url (e.g. http://localhost:8082 for accounts_api)\n- transactions_url\n- user_id (MUST match the uid inside firebase_id_token for external calls)\n- account_id\n- firebase_id_token (Firebase Auth ID token)\n- internal_api_key (for internal-only endpoints like GET /users and global /transactions)\n\nAuth rules:\n- External calls: Authorization: Bearer {{firebase_id_token}}\n- Internal calls: X-Internal-Api-Key: {{internal_api_key}}",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "variable": [
@@ -37,6 +37,14 @@
         {
             "key": "sync_transactions_url",
             "value": "http://localhost:8085"
+        },
+        {
+            "key": "firebase_id_token",
+            "value": "<paste_firebase_id_token_here>"
+        },
+        {
+            "key": "internal_api_key",
+            "value": "dev-internal-key"
         }
     ],
     "item": [
@@ -47,6 +55,12 @@
                     "name": "List users",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-Internal-Api-Key",
+                                "value": "{{internal_api_key}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{users_url}}/users",
                             "host": [
@@ -66,6 +80,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -87,6 +105,12 @@
                     "name": "Get user",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{users_url}}/users/{{user_id}}",
                             "host": [
@@ -107,6 +131,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -129,6 +157,12 @@
                     "name": "Delete user",
                     "request": {
                         "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{users_url}}/users/{{user_id}}",
                             "host": [
@@ -150,6 +184,12 @@
                     "name": "List accounts",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{accounts_url}}/users/{{user_id}}/accounts",
                             "host": [
@@ -171,6 +211,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -194,6 +238,12 @@
                     "name": "Get account",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{accounts_url}}/users/{{user_id}}/accounts/{{account_id}}",
                             "host": [
@@ -216,6 +266,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -240,6 +294,12 @@
                     "name": "Delete account",
                     "request": {
                         "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{accounts_url}}/users/{{user_id}}/accounts/{{account_id}}",
                             "host": [
@@ -262,6 +322,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -290,6 +354,12 @@
                     "name": "List all transactions (Global)",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "X-Internal-Api-Key",
+                                "value": "{{internal_api_key}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{transactions_url}}/transactions?since=1703241600&limit=10",
                             "host": [
@@ -317,6 +387,12 @@
                     "name": "List transactions",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions?since=1703241600&limit=10",
                             "host": [
@@ -352,6 +428,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -377,6 +457,12 @@
                     "name": "Get transaction",
                     "request": {
                         "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions/{{transaction_id}}",
                             "host": [
@@ -401,6 +487,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {
@@ -427,6 +517,12 @@
                     "name": "Delete transaction",
                     "request": {
                         "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
                         "url": {
                             "raw": "{{transactions_url}}/users/{{user_id}}/accounts/{{account_id}}/transactions/{{transaction_id}}",
                             "host": [
@@ -451,6 +547,10 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
                             }
                         ],
                         "body": {

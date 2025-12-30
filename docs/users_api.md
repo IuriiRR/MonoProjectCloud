@@ -32,6 +32,15 @@ export FIRESTORE_EMULATOR_HOST=localhost:8080
 export FIRESTORE_PROJECT_ID=demo-monobank
 ```
 
+### Auth
+
+All endpoints (except `OPTIONS` and the service root) are protected:
+- **External calls**: `Authorization: Bearer <firebase_id_token>`
+- **Internal calls (sync services)**: `X-Internal-Api-Key: <INTERNAL_API_KEY>`
+
+Local convenience:
+- Set `AUTH_MODE=disabled` to bypass token verification (dev-only).
+
 ### 4) Seed users (idempotent)
 
 If `users` collection is empty, this will create 2 sample users:
@@ -58,7 +67,8 @@ Base URL: `http://localhost:8081`
 - `GET /users`
 
 ```bash
-curl -s http://localhost:8081/users | jq
+curl -s http://localhost:8081/users \
+  -H 'X-Internal-Api-Key: dev-internal-key' | jq
 ```
 
 #### Create user
@@ -67,6 +77,7 @@ curl -s http://localhost:8081/users | jq
 ```bash
 curl -s -X POST http://localhost:8081/users \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <firebase_id_token>' \
   -d '{"user_id":"user_123","username":"Jane","mono_token":null,"active":true}' | jq
 ```
 
@@ -74,7 +85,8 @@ curl -s -X POST http://localhost:8081/users \
 - `GET /users/{user_id}`
 
 ```bash
-curl -s http://localhost:8081/users/user_123 | jq
+curl -s http://localhost:8081/users/user_123 \
+  -H 'Authorization: Bearer <firebase_id_token>' | jq
 ```
 
 #### Update user (partial)
@@ -83,6 +95,7 @@ curl -s http://localhost:8081/users/user_123 | jq
 ```bash
 curl -s -X PATCH http://localhost:8081/users/user_123 \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <firebase_id_token>' \
   -d '{"active":false}' | jq
 ```
 
@@ -90,7 +103,8 @@ curl -s -X PATCH http://localhost:8081/users/user_123 \
 - `DELETE /users/{user_id}`
 
 ```bash
-curl -s -X DELETE http://localhost:8081/users/user_123 | jq
+curl -s -X DELETE http://localhost:8081/users/user_123 \
+  -H 'Authorization: Bearer <firebase_id_token>' | jq
 ```
 
 

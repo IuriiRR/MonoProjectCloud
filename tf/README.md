@@ -34,6 +34,10 @@ cp terraform.tfvars.example terraform.tfvars
 
 Edit `terraform.tfvars`.
 
+Auth-related vars:
+- `internal_api_key`: required for `sync_worker` / `sync_transactions` to call `users_api` / `accounts_api` / `transactions_api` (sent as `X-Internal-Api-Key`)
+- `auth_mode`: keep as `"enabled"` for production. `"disabled"` is dev-only.
+
 ### Deploy
 
 ```bash

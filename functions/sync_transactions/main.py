@@ -18,6 +18,7 @@ except Exception:
 ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
 TRANSACTIONS_API_URL = os.environ.get("TRANSACTIONS_API_URL", "http://transactions_api:8083")
 MONO_API_URL = "https://api.monobank.ua"
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 
 def _json_response(payload: Any, status: int = 200) -> Response:
     resp = make_response(json.dumps(payload, ensure_ascii=False), status)
@@ -60,9 +61,13 @@ def sync_transactions(request):
         token = req.mono_token
         days = req.days
 
+        headers = {}
+        if INTERNAL_API_KEY:
+            headers["X-Internal-Api-Key"] = INTERNAL_API_KEY
+
         # 1. Fetch accounts for this user
         logger.info(f"Fetching accounts for user {user_id} from {ACCOUNTS_API_URL}")
-        acc_resp = requests.get(f"{ACCOUNTS_API_URL}/users/{user_id}/accounts")
+        acc_resp = requests.get(f"{ACCOUNTS_API_URL}/users/{user_id}/accounts", headers=headers)
         if not acc_resp.ok:
             return _error(f"Failed to fetch accounts: {acc_resp.text}", status=500)
         
@@ -137,7 +142,7 @@ def sync_transactions(request):
                 # 3. Put transactions to transactions_api with batch request
                 logger.info(f"Sending {len(mapped_txs)} transactions to {TRANSACTIONS_API_URL}")
                 tx_put_url = f"{TRANSACTIONS_API_URL}/users/{user_id}/accounts/{account_id}/transactions"
-                put_resp = requests.put(tx_put_url, json={"transactions": mapped_txs})
+                put_resp = requests.put(tx_put_url, json={"transactions": mapped_txs}, headers=headers)
                 
                 if not put_resp.ok:
                     err_msg = f"Failed to update transactions for account {account_id}: {put_resp.text}"

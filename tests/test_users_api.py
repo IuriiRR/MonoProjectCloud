@@ -90,6 +90,43 @@ def test_options(app):
     assert resp.status_code == 204
 
 
+def test_auth_missing_token_returns_401(app, monkeypatch):
+    import functions.users_api.main as users_main
+
+    monkeypatch.setattr(
+        users_main,
+        "authenticate_request",
+        lambda _req: (None, {"error": "Missing Authorization header", "code": "UNAUTHENTICATED"}, 401),
+    )
+
+    with app.test_request_context("/users/u1", method="GET"):
+        resp = users_api(flask_request)
+    assert resp.status_code == 401
+    assert _json(resp)["code"] == "UNAUTHENTICATED"
+
+
+def test_auth_user_not_found_returns_403(app, monkeypatch):
+    import functions.users_api.main as users_main
+
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("u_missing", None, None))
+
+    with app.test_request_context("/users/u_missing", method="GET"):
+        resp = users_api(flask_request)
+    assert resp.status_code == 403
+    body = _json(resp)
+    assert body["code"] == "USER_NOT_FOUND"
+
+
+def test_auth_forbidden_when_uid_mismatch(app, monkeypatch):
+    import functions.users_api.main as users_main
+
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("u1", None, None))
+
+    with app.test_request_context("/users/u2", method="GET"):
+        resp = users_api(flask_request)
+    assert resp.status_code == 403
+    assert _json(resp)["code"] == "FORBIDDEN"
+
 
 
 

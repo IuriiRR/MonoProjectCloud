@@ -227,3 +227,25 @@ def test_batch_put_accounts(app):
     assert _json(resp_v3)["account"]["id"] == "a3"
 
 
+def test_auth_user_not_found_returns_403(app, monkeypatch):
+    import functions.accounts_api.main as accounts_main
+
+    monkeypatch.setattr(accounts_main, "authenticate_request", lambda _req: ("missing", None, None))
+
+    with app.test_request_context("/users/missing/accounts", method="GET"):
+        resp = accounts_api(flask_request)
+    assert resp.status_code == 403
+    assert _json(resp)["code"] == "USER_NOT_FOUND"
+
+
+def test_auth_forbidden_when_uid_mismatch(app, monkeypatch):
+    import functions.accounts_api.main as accounts_main
+
+    monkeypatch.setattr(accounts_main, "authenticate_request", lambda _req: ("u1", None, None))
+
+    with app.test_request_context("/users/u2/accounts", method="GET"):
+        resp = accounts_api(flask_request)
+    assert resp.status_code == 403
+    assert _json(resp)["code"] == "FORBIDDEN"
+
+

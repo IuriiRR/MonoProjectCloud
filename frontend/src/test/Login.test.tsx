@@ -13,14 +13,14 @@ describe('Login Page', () => {
     expect(screen.getByRole('heading', { name: /Login/i })).toBeInTheDocument();
   });
 
-  it('renders email and password inputs', () => {
+  it('does not render email/password inputs', () => {
     render(
       <BrowserRouter>
         <Login />
       </BrowserRouter>
     );
-    expect(screen.getByLabelText(/Email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Password/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Email/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Password/i)).not.toBeInTheDocument();
   });
 
   it('renders google login button', () => {
@@ -30,6 +30,15 @@ describe('Login Page', () => {
       </BrowserRouter>
     );
     expect(screen.getByText(/Google Login/i)).toBeInTheDocument();
+  });
+
+  it('shows initial error if provided', () => {
+    render(
+      <BrowserRouter>
+        <Login initialError="User not found, please, register first" />
+      </BrowserRouter>
+    );
+    expect(screen.getByText(/User not found, please, register first/i)).toBeInTheDocument();
   });
 });
 

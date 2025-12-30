@@ -1,6 +1,58 @@
+import { auth } from './firebase';
+
 const USERS_API_URL = import.meta.env.VITE_USERS_API_URL || 'http://localhost:8081';
 const ACCOUNTS_API_URL = import.meta.env.VITE_ACCOUNTS_API_URL || 'http://localhost:8082';
 const TRANSACTIONS_API_URL = import.meta.env.VITE_TRANSACTIONS_API_URL || 'http://localhost:8083';
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  details?: unknown;
+
+  constructor(message: string, status: number, code?: string, details?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+}
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const user = auth.currentUser;
+  if (!user) return {};
+  const token = await user.getIdToken();
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function apiFetchJson(url: string, init?: RequestInit): Promise<any> {
+  const authHeaders = await getAuthHeaders();
+  const headers = {
+    ...(init?.headers || {}),
+    ...authHeaders,
+  } as Record<string, string>;
+
+  const resp = await fetch(url, { ...init, headers });
+
+  let payload: any = null;
+  const contentType = resp.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    payload = await resp.json().catch(() => null);
+  } else {
+    payload = await resp.text().catch(() => null);
+  }
+
+  if (!resp.ok) {
+    const message =
+      (payload && typeof payload === 'object' && (payload.error || payload.message)) ||
+      `Request failed (${resp.status})`;
+    const code = payload && typeof payload === 'object' ? payload.code : undefined;
+    const details = payload && typeof payload === 'object' ? payload.details : undefined;
+    throw new ApiError(String(message), resp.status, code, details);
+  }
+
+  return payload;
+}
 
 export interface UserProfile {
   user_id: string;
@@ -26,91 +78,62 @@ export interface Transaction {
 }
 
 export const fetchUserProfile = async (userId: string): Promise<UserProfile> => {
-  const response = await fetch(`${USERS_API_URL}/users/${userId}`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch user profile');
-  }
-  const data = await response.json();
-  return data.user;
+  const data = await apiFetchJson(`${USERS_API_URL}/users/${userId}`);
+  return data.user as UserProfile;
 };
 
 export const createUserProfile = async (userId: string, username?: string): Promise<UserProfile> => {
-  const response = await fetch(`${USERS_API_URL}/users`, {
+  try {
+    const data = await apiFetchJson(`${USERS_API_URL}/users`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, username }),
-  });
-  if (response.status === 409) {
-    // User already exists, fetch it
-    return fetchUserProfile(userId);
+    });
+    return data.user as UserProfile;
+  } catch (e: any) {
+    if (e instanceof ApiError && e.status === 409) {
+      // User already exists, fetch it
+      return fetchUserProfile(userId);
+    }
+    throw e;
   }
-  if (!response.ok) {
-    throw new Error('Failed to create user profile');
-  }
-  const data = await response.json();
-  return data.user;
 };
 
 export const updateUserProfile = async (userId: string, updates: Partial<UserProfile>): Promise<UserProfile> => {
-  const response = await fetch(`${USERS_API_URL}/users/${userId}`, {
+  const data = await apiFetchJson(`${USERS_API_URL}/users/${userId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
-  if (!response.ok) {
-    throw new Error('Failed to update user profile');
-  }
-  const data = await response.json();
-  return data.user;
+  return data.user as UserProfile;
 };
 
 export const fetchAccounts = async (userId: string): Promise<Account[]> => {
-  const response = await fetch(`${ACCOUNTS_API_URL}/users/${userId}/accounts`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch accounts');
-  }
-  const data = await response.json();
-  return data.accounts;
+  const data = await apiFetchJson(`${ACCOUNTS_API_URL}/users/${userId}/accounts`);
+  return data.accounts as Account[];
 };
 
 export const createAccount = async (userId: string, account: any): Promise<Account> => {
-  const response = await fetch(`${ACCOUNTS_API_URL}/users/${userId}/accounts`, {
+  const data = await apiFetchJson(`${ACCOUNTS_API_URL}/users/${userId}/accounts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(account),
   });
-  if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Failed to create account');
-  }
-  const data = await response.json();
-  return data.account;
+  return data.account as Account;
 };
 
 export const fetchTransactions = async (userId: string, accountId: string): Promise<Transaction[]> => {
-  const response = await fetch(`${TRANSACTIONS_API_URL}/users/${userId}/accounts/${accountId}/transactions?limit=20`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch transactions');
-  }
-  const data = await response.json();
-  return data.transactions;
+  const data = await apiFetchJson(`${TRANSACTIONS_API_URL}/users/${userId}/accounts/${accountId}/transactions?limit=20`);
+  return data.transactions as Transaction[];
 };
 
 export const fetchAllUserTransactions = async (userId: string): Promise<Transaction[]> => {
-  const response = await fetch(`${TRANSACTIONS_API_URL}/users/${userId}/transactions`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch all transactions');
-  }
-  const data = await response.json();
-  return data.transactions;
+  const data = await apiFetchJson(`${TRANSACTIONS_API_URL}/users/${userId}/transactions`);
+  return data.transactions as Transaction[];
 };
 
 export const fetchBalanceChartData = async (userId: string): Promise<Record<string, {time: number, balance: number}[]>> => {
-  const response = await fetch(`${TRANSACTIONS_API_URL}/users/${userId}/charts/balance`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch chart data');
-  }
-  const data = await response.json();
-  return data.charts;
+  const data = await apiFetchJson(`${TRANSACTIONS_API_URL}/users/${userId}/charts/balance`);
+  return data.charts as Record<string, {time: number, balance: number}[]>;
 };
 

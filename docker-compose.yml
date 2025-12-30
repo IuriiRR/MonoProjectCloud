@@ -22,6 +22,8 @@ services:
     environment:
       - FIRESTORE_EMULATOR_HOST=firestore:8080
       - FIRESTORE_PROJECT_ID=demo-monobank
+      - FIREBASE_AUTH_EMULATOR_HOST=firestore:9099
+      - INTERNAL_API_KEY=dev-internal-key
     depends_on:
       - firestore
     ports:
@@ -34,6 +36,8 @@ services:
     environment:
       - FIRESTORE_EMULATOR_HOST=firestore:8080
       - FIRESTORE_PROJECT_ID=demo-monobank
+      - FIREBASE_AUTH_EMULATOR_HOST=firestore:9099
+      - INTERNAL_API_KEY=dev-internal-key
     depends_on:
       - firestore
     ports:
@@ -46,6 +50,8 @@ services:
     environment:
       - FIRESTORE_EMULATOR_HOST=firestore:8080
       - FIRESTORE_PROJECT_ID=demo-monobank
+      - FIREBASE_AUTH_EMULATOR_HOST=firestore:9099
+      - INTERNAL_API_KEY=dev-internal-key
     depends_on:
       - firestore
     ports:
@@ -61,6 +67,7 @@ services:
       - USERS_API_URL=http://users_api:8081
       - ACCOUNTS_API_URL=http://accounts_api:8082
       - SYNC_TRANSACTIONS_URL=http://sync_transactions:8085
+      - INTERNAL_API_KEY=dev-internal-key
     depends_on:
       - firestore
       - users_api
@@ -78,6 +85,7 @@ services:
       - FIRESTORE_PROJECT_ID=demo-monobank
       - ACCOUNTS_API_URL=http://accounts_api:8082
       - TRANSACTIONS_API_URL=http://transactions_api:8083
+      - INTERNAL_API_KEY=dev-internal-key
     depends_on:
       - firestore
       - accounts_api

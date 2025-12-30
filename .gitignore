@@ -37,3 +37,5 @@ tf/terraform.tfstate.backup
 **/temp
 **/cache
 **/tmp
+
+.firebase

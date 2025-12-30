@@ -123,4 +123,17 @@ variable "google_oauth_client_secret" {
   default     = ""
 }
 
+variable "internal_api_key" {
+  type        = string
+  description = "Shared key for internal function-to-function calls (sync_worker/sync_transactions -> APIs)."
+  sensitive   = true
+  default     = ""
+}
+
+variable "auth_mode" {
+  type        = string
+  description = "Auth mode for HTTP APIs: 'enabled' (default) or 'disabled' (dev-only)."
+  default     = "enabled"
+}
+
 

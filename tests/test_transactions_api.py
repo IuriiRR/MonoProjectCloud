@@ -253,3 +253,36 @@ def test_batch_put_transactions(app):
     assert _json(resp_v3)["transaction"]["id"] == "t3"
 
 
+def test_auth_forbids_global_transactions_for_external_user(app, monkeypatch):
+    import functions.transactions_api.main as transactions_main
+
+    monkeypatch.setattr(transactions_main, "authenticate_request", lambda _req: ("u1", None, None))
+
+    with app.test_request_context("/transactions", method="GET"):
+        resp = transactions_api(flask_request)
+    assert resp.status_code == 403
+    assert _json(resp)["code"] == "FORBIDDEN"
+
+
+def test_auth_user_not_found_returns_403(app, monkeypatch):
+    import functions.transactions_api.main as transactions_main
+
+    monkeypatch.setattr(transactions_main, "authenticate_request", lambda _req: ("missing", None, None))
+
+    with app.test_request_context("/users/missing/transactions", method="GET"):
+        resp = transactions_api(flask_request)
+    assert resp.status_code == 403
+    assert _json(resp)["code"] == "USER_NOT_FOUND"
+
+
+def test_auth_forbidden_when_uid_mismatch(app, monkeypatch):
+    import functions.transactions_api.main as transactions_main
+
+    monkeypatch.setattr(transactions_main, "authenticate_request", lambda _req: ("u1", None, None))
+
+    with app.test_request_context("/users/u2/transactions", method="GET"):
+        resp = transactions_api(flask_request)
+    assert resp.status_code == 403
+    assert _json(resp)["code"] == "FORBIDDEN"
+
+

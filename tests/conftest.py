@@ -44,3 +44,21 @@ def patch_users_api_db(monkeypatch, fake_db):
     )
 
     # Sync workers don't use get_db directly but it's good practice to have them ready
+
+    # Default auth behavior for unit tests:
+    # run everything as "internal" so existing CRUD tests don't need Firebase tokens.
+    monkeypatch.setattr(
+        users_main,
+        "authenticate_request",
+        lambda _req: (users_main.INTERNAL_UID, None, None),
+    )
+    monkeypatch.setattr(
+        accounts_main,
+        "authenticate_request",
+        lambda _req: (accounts_main.INTERNAL_UID, None, None),
+    )
+    monkeypatch.setattr(
+        transactions_main,
+        "authenticate_request",
+        lambda _req: (transactions_main.INTERNAL_UID, None, None),
+    )

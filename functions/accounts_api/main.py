@@ -8,10 +8,12 @@ from pydantic import ValidationError
 
 # Support both "run as a package" (relative imports) and "run from this folder" (local imports).
 try:  # pragma: no cover
+    from .auth import INTERNAL_UID, authenticate_request
     from .firestore_client import get_db
     from .models import AccountCreate, AccountUpdate
     from .serialization import account_doc_to_dict
 except Exception:  # pragma: no cover
+    from auth import INTERNAL_UID, authenticate_request
     from firestore_client import get_db
     from models import AccountCreate, AccountUpdate
     from serialization import account_doc_to_dict
@@ -43,12 +45,14 @@ def _parse_json(request) -> Tuple[Dict[str, Any] | None, Response | None]:
         return None, _error("Invalid JSON body", 400)
 
 
-def _require_user(db, user_id: str):
+def _require_user(db, user_id: str, *, is_internal: bool):
     users_ref = db.collection("users")
     user_ref = users_ref.document(user_id)
     user_doc = user_ref.get()
     if not user_doc.exists:
-        return None, _error("User not found", 404)
+        if is_internal:
+            return None, _error("User not found", 404)
+        return None, _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
     return user_ref, None
 
 
@@ -94,8 +98,15 @@ def accounts_api(request):
 
     user_id = parts[1]
 
+    uid, auth_err, auth_status = authenticate_request(request)
+    if auth_err:
+        return _json_response(auth_err, status=auth_status or 401)
+    is_internal = uid == INTERNAL_UID
+    if not is_internal and uid != user_id:
+        return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
     db = get_db()
-    _, user_err = _require_user(db, user_id)
+    _, user_err = _require_user(db, user_id, is_internal=is_internal)
     if user_err:
         return user_err
 

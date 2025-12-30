@@ -18,6 +18,7 @@ USERS_API_URL = os.environ.get("USERS_API_URL", "http://users_api:8081")
 ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
 SYNC_TRANSACTIONS_URL = os.environ.get("SYNC_TRANSACTIONS_URL", "http://sync_transactions:8085")
 MONO_API_URL = "https://api.monobank.ua"
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 
 # Simple currency mapping as a fallback since seed/currency.json is missing
 CURRENCY_MAP = {
@@ -44,9 +45,13 @@ def _error(message: str, status: int = 400, extra: Dict[str, Any] | None = None)
 def _trigger_tx_sync(user_id: str, token: str):
     logger.info(f"Triggering transaction sync for user {user_id}")
     try:
+        headers = {}
+        if INTERNAL_API_KEY:
+            headers["X-Internal-Api-Key"] = INTERNAL_API_KEY
         tx_sync_resp = requests.post(
             f"{SYNC_TRANSACTIONS_URL}/sync/transactions",
             json={"user_id": user_id, "mono_token": token},
+            headers=headers,
             timeout=300 # Wait up to 5 mins in the background thread
         )
         if not tx_sync_resp.ok:
@@ -82,7 +87,10 @@ def sync_worker(request):
     try:
         # 1. Fetch all users from users_api
         logger.info(f"Fetching users from {USERS_API_URL}/users")
-        users_resp = requests.get(f"{USERS_API_URL}/users")
+        headers = {}
+        if INTERNAL_API_KEY:
+            headers["X-Internal-Api-Key"] = INTERNAL_API_KEY
+        users_resp = requests.get(f"{USERS_API_URL}/users", headers=headers)
         if not users_resp.ok:
             return _error(f"Failed to fetch users: {users_resp.text}", status=500)
         
@@ -144,7 +152,8 @@ def sync_worker(request):
             logger.info(f"Sending {len(accounts_to_sync)} accounts to {ACCOUNTS_API_URL}")
             put_resp = requests.put(
                 f"{ACCOUNTS_API_URL}/users/{user_id}/accounts",
-                json={"accounts": accounts_to_sync}
+                json={"accounts": accounts_to_sync},
+                headers=headers
             )
             
             if not put_resp.ok:

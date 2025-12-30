@@ -8,10 +8,12 @@ from pydantic import ValidationError
 
 # Support both "run as a package" (relative imports) and "run from this folder" (local imports).
 try:  # pragma: no cover
+    from .auth import INTERNAL_UID, authenticate_request
     from .firestore_client import get_db
     from .models import UserCreate, UserUpdate
     from .serialization import user_doc_to_dict
 except Exception:  # pragma: no cover
+    from auth import INTERNAL_UID, authenticate_request
     from firestore_client import get_db
     from models import UserCreate, UserUpdate
     from serialization import user_doc_to_dict
@@ -86,11 +88,21 @@ def users_api(request):
     # /users
     if len(parts) == 1:
         if request.method == "GET":
+            uid, auth_err, auth_status = authenticate_request(request)
+            if auth_err:
+                return _json_response(auth_err, status=auth_status or 401)
+            if uid != INTERNAL_UID:
+                return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
             docs = users_ref.stream()
             users = [user_doc_to_dict(d.id, d.to_dict() or {}) for d in docs]
             return _json_response({"users": users})
 
         if request.method == "POST":
+            uid, auth_err, auth_status = authenticate_request(request)
+            if auth_err:
+                return _json_response(auth_err, status=auth_status or 401)
+
             body, err = _parse_json(request)
             if err:
                 return err
@@ -100,6 +112,9 @@ def users_api(request):
                 payload = UserCreate.model_validate(body)
             except ValidationError as e:
                 return _error("Validation error", 400, {"details": e.errors()})
+
+            if uid != INTERNAL_UID and payload.user_id != uid:
+                return _error("Forbidden", 403, {"code": "FORBIDDEN"})
 
             doc_ref = users_ref.document(payload.user_id)
             if doc_ref.get().exists:
@@ -129,12 +144,27 @@ def users_api(request):
         doc_ref = users_ref.document(user_id)
 
         if request.method == "GET":
+            uid, auth_err, auth_status = authenticate_request(request)
+            if auth_err:
+                return _json_response(auth_err, status=auth_status or 401)
+            if uid != INTERNAL_UID and uid != user_id:
+                return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
             doc = doc_ref.get()
             if not doc.exists:
-                return _error("User not found", 404)
+                # UX requirement: authenticated user who is not registered in DB should get 403.
+                if uid == INTERNAL_UID:
+                    return _error("User not found", 404)
+                return _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
             return _json_response({"user": user_doc_to_dict(doc.id, doc.to_dict() or {})})
 
         if request.method in ("PUT", "PATCH"):
+            uid, auth_err, auth_status = authenticate_request(request)
+            if auth_err:
+                return _json_response(auth_err, status=auth_status or 401)
+            if uid != INTERNAL_UID and uid != user_id:
+                return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
             body, err = _parse_json(request)
             if err:
                 return err
@@ -147,7 +177,9 @@ def users_api(request):
 
             doc = doc_ref.get()
             if not doc.exists:
-                return _error("User not found", 404)
+                if uid == INTERNAL_UID:
+                    return _error("User not found", 404)
+                return _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
 
             updates: Dict[str, Any] = {}
             # Important: allow explicitly clearing nullable fields by sending `null`.
@@ -172,9 +204,17 @@ def users_api(request):
             )
 
         if request.method == "DELETE":
+            uid, auth_err, auth_status = authenticate_request(request)
+            if auth_err:
+                return _json_response(auth_err, status=auth_status or 401)
+            if uid != INTERNAL_UID and uid != user_id:
+                return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
             doc = doc_ref.get()
             if not doc.exists:
-                return _error("User not found", 404)
+                if uid == INTERNAL_UID:
+                    return _error("User not found", 404)
+                return _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
             doc_ref.delete()
             return _json_response({"deleted": True, "user_id": user_id})
 

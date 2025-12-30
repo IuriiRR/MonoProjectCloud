@@ -22,6 +22,7 @@ curl -s -X POST http://localhost:8084/sync/accounts | jq
 ### Environment Variables
 - `USERS_API_URL`: URL for `users_api` (default: `http://localhost:8081`)
 - `ACCOUNTS_API_URL`: URL for `accounts_api` (default: `http://localhost:8082`)
+- `INTERNAL_API_KEY`: shared internal key used when calling `users_api` / `accounts_api`
 
 ### Running Locally
 

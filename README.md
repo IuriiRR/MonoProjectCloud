@@ -75,4 +75,14 @@ Google Login and Email/Password are supported via the Firebase Auth Emulator.
 - You can manage users and see sign-in logs in the Emulator UI at `http://localhost:4000/auth`.
 - For Google Auth, the emulator will show a "mock" sign-in popup where you can choose any email to log in.
 
+### Auth + Registration rule (important)
+
+- Firebase Auth login **does not auto-register** a user in the DB.
+- Backend APIs require a valid Firebase ID token (`Authorization: Bearer <idToken>`).
+- If a Firebase-authenticated user has **no user document** in Firestore, APIs return **403** with:
+  - `code: "USER_NOT_FOUND"`
+  - `error: "User not found, please, register first"`
+
+More details: `docs/auth.md`
+
 
