@@ -21,6 +21,7 @@ Also ensure these APIs are enabled in the project:
 - Cloud Build
 - Artifact Registry
 - Cloud Run
+- Cloud Scheduler
 - Firestore
 
 ### Configure
@@ -38,6 +39,10 @@ Auth-related vars:
 - `internal_api_key`: required for `sync_worker` / `sync_transactions` to call `users_api` / `accounts_api` / `transactions_api` (sent as `X-Internal-Api-Key`)
 - `auth_mode`: keep as `"enabled"` for production. `"disabled"` is dev-only.
 
+Scheduler-related vars:
+- `sync_worker_schedule`: cron schedule for triggering `sync_worker` (default: hourly)
+- `scheduler_time_zone`: time zone used by Cloud Scheduler (default: `Etc/UTC`)
+
 ### Deploy
 
 ```bash
@@ -46,7 +51,7 @@ terraform init
 terraform apply
 ```
 
-Terraform will output `users_api_url` and `accounts_api_url`.
+Terraform will output `users_api_url`, `accounts_api_url`, and `sync_worker_scheduler_job_name` (plus other service URLs).
 
 ### Update / redeploy
 

@@ -23,6 +23,11 @@ output "sync_transactions_url" {
   value       = google_cloudfunctions2_function.sync_transactions.service_config[0].uri
 }
 
+output "sync_worker_scheduler_job_name" {
+  description = "Name of the Cloud Scheduler job that triggers sync_worker."
+  value       = google_cloud_scheduler_job.sync_worker_hourly.name
+}
+
 output "firebase_hosting_url" {
   description = "The URL of the Firebase Hosting site."
   value       = "https://${google_firebase_hosting_site.main.site_id}.web.app"
@@ -31,9 +36,9 @@ output "firebase_hosting_url" {
 output "firebase_config" {
   description = "Firebase configuration for the frontend."
   value = {
-    appId             = google_firebase_web_app.frontend.app_id
-    projectId         = var.project_id
-    storageBucket     = "${var.project_id}.appspot.com"
+    appId         = google_firebase_web_app.frontend.app_id
+    projectId     = var.project_id
+    storageBucket = "${var.project_id}.appspot.com"
   }
 }
 

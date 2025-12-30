@@ -136,4 +136,16 @@ variable "auth_mode" {
   default     = "enabled"
 }
 
+variable "sync_worker_schedule" {
+  type        = string
+  description = "Cron schedule for Cloud Scheduler job that triggers sync_worker."
+  default     = "0 * * * *"
+}
+
+variable "scheduler_time_zone" {
+  type        = string
+  description = "Time zone used by Cloud Scheduler (e.g. 'Etc/UTC', 'Europe/Kyiv')."
+  default     = "Etc/UTC"
+}
+
 

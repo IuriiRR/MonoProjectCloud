@@ -18,54 +18,60 @@ provider "google-beta" {
 
 # Enable Firebase services
 resource "google_project_service" "firebase" {
-  provider = google-beta
-  project  = var.project_id
-  service  = "firebase.googleapis.com"
+  provider           = google-beta
+  project            = var.project_id
+  service            = "firebase.googleapis.com"
   disable_on_destroy = false
 }
 
 resource "google_project_service" "hosting" {
-  provider = google-beta
-  project  = var.project_id
-  service  = "firebasehosting.googleapis.com"
+  provider           = google-beta
+  project            = var.project_id
+  service            = "firebasehosting.googleapis.com"
   disable_on_destroy = false
 }
 
 resource "google_project_service" "identitytoolkit" {
-  provider = google-beta
-  project  = var.project_id
-  service  = "identitytoolkit.googleapis.com"
+  provider           = google-beta
+  project            = var.project_id
+  service            = "identitytoolkit.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "cloudscheduler" {
+  project            = var.project_id
+  service            = "cloudscheduler.googleapis.com"
   disable_on_destroy = false
 }
 
 resource "google_firebase_project" "default" {
-  provider = google-beta
-  project  = var.project_id
+  provider   = google-beta
+  project    = var.project_id
   depends_on = [google_project_service.firebase]
 }
 
 # Firebase Web App for the frontend
 resource "google_firebase_web_app" "frontend" {
-  provider     = google-beta
-  project      = var.project_id
-  display_name = "CloudApi Frontend"
+  provider        = google-beta
+  project         = var.project_id
+  display_name    = "CloudApi Frontend"
   deletion_policy = "DELETE"
-  depends_on   = [google_firebase_project.default]
+  depends_on      = [google_firebase_project.default]
 }
 
 # Fetch the Firebase Web App config (API key, etc.) for the frontend
 data "google_firebase_web_app_config" "frontend" {
-  provider = google-beta
-  project  = var.project_id
+  provider   = google-beta
+  project    = var.project_id
   web_app_id = google_firebase_web_app.frontend.app_id
 }
 
 # Hosting site (if not already created with the project)
 resource "google_firebase_hosting_site" "main" {
-  provider = google-beta
-  project  = var.project_id
-  site_id  = var.project_id # Using project_id as site_id is standard
-  app_id   = google_firebase_web_app.frontend.app_id
+  provider   = google-beta
+  project    = var.project_id
+  site_id    = var.project_id # Using project_id as site_id is standard
+  app_id     = google_firebase_web_app.frontend.app_id
   depends_on = [google_firebase_web_app.frontend]
 }
 
@@ -381,6 +387,35 @@ resource "google_cloudfunctions2_function" "sync_transactions" {
   depends_on = [
     google_cloudfunctions2_function.accounts_api,
     google_cloudfunctions2_function.transactions_api
+  ]
+}
+
+# Hourly trigger for sync_worker (HTTP)
+resource "google_cloud_scheduler_job" "sync_worker_hourly" {
+  name        = "sync-worker-hourly"
+  description = "Hourly sync of Monobank accounts/transactions for all active users."
+  region      = var.region
+
+  schedule  = var.sync_worker_schedule
+  time_zone = var.scheduler_time_zone
+
+  attempt_deadline = "300s"
+
+  http_target {
+    uri         = "${google_cloudfunctions2_function.sync_worker.service_config[0].uri}/sync/accounts"
+    http_method = "POST"
+
+    headers = {
+      Content-Type       = "application/json"
+      X-Internal-Api-Key = var.internal_api_key
+    }
+
+    body = base64encode("{}")
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloudfunctions2_function.sync_worker,
   ]
 }
 
