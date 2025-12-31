@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { fetchAccounts, fetchTransactions, Account, Transaction } from '../services/api';
-import { ChevronDown, LogOut, RefreshCcw, Settings as SettingsIcon, BarChart3 } from 'lucide-react';
+import { fetchAccountsCached, fetchTransactions, Account, Transaction, updateAccount } from '../services/api';
+import { ChevronDown, LogOut, RefreshCcw, Settings as SettingsIcon, BarChart3, WalletCards, PiggyBank } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
   user: User;
 }
+
+type AccountsTab = 'jars' | 'cards';
 
 const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -15,10 +17,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<AccountsTab>('jars');
+  const [savingBudget, setSavingBudget] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadAccounts();
+    loadAccounts({ forceRefresh: false });
   }, [user.uid]);
 
   useEffect(() => {
@@ -27,20 +31,39 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
     }
   }, [selectedAccountId, user.uid]);
 
-  const loadAccounts = async () => {
+  const loadAccounts = async (opts?: { forceRefresh?: boolean }) => {
     try {
       setLoading(true);
-      const data = await fetchAccounts(user.uid);
+      const data = await fetchAccountsCached(user.uid, { forceRefresh: Boolean(opts?.forceRefresh) });
       setAccounts(data);
-      if (data.length > 0 && !selectedAccountId) {
-        setSelectedAccountId(data[0].id);
-      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  const jars = accounts.filter(a => a.type === 'jar');
+  const cards = accounts.filter(a => a.type === 'card');
+  const visibleAccounts = activeTab === 'jars' ? jars : cards;
+
+  useEffect(() => {
+    // Keep selection valid within the active tab.
+    if (!selectedAccountId) {
+      if (visibleAccounts.length > 0) setSelectedAccountId(visibleAccounts[0].id);
+      return;
+    }
+    const stillVisible = visibleAccounts.some(a => a.id === selectedAccountId);
+    if (!stillVisible) {
+      if (visibleAccounts.length > 0) {
+        setSelectedAccountId(visibleAccounts[0].id);
+      } else {
+        setSelectedAccountId('');
+        setTransactions([]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, accounts]);
 
   const loadTransactions = async (accountId: string) => {
     try {
@@ -54,6 +77,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const handleLogout = () => signOut(auth);
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
+  const selectedIsBudget = Boolean(selectedAccount?.is_budget);
+
+  const handleToggleBudget = async () => {
+    if (!selectedAccount || selectedAccount.type !== 'jar') return;
+    setSavingBudget(true);
+    setError('');
+    try {
+      const updated = await updateAccount(user.uid, selectedAccount.id, { is_budget: !selectedIsBudget });
+      setAccounts(prev => prev.map(a => (a.id === updated.id ? { ...a, ...updated } : a)));
+    } catch (err: any) {
+      setError(err.message || 'Failed to update budget flag');
+    } finally {
+      setSavingBudget(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-8">
@@ -63,13 +101,46 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
           <p className="text-zinc-500 text-sm mt-1">Manage your Monobank accounts</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button 
-            onClick={() => navigate('/charts')}
-            className="flex items-center px-4 py-2 text-sm font-medium bg-zinc-900 border border-white/10 rounded-lg hover:border-white/30 transition-all shadow-glow"
-          >
-            <BarChart3 size={18} className="mr-2" />
-            Charts
-          </button>
+          <div className="flex items-center bg-zinc-950 border border-white/10 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('jars')}
+              className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                activeTab === 'jars' ? 'bg-white text-black' : 'text-zinc-300 hover:bg-white/5'
+              }`}
+              aria-pressed={activeTab === 'jars'}
+            >
+              <PiggyBank size={18} className="mr-2" />
+              Jars
+              <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${
+                activeTab === 'jars' ? 'bg-black/10 text-black' : 'bg-white/10 text-zinc-200'
+              }`}>
+                {jars.length}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('cards')}
+              className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                activeTab === 'cards' ? 'bg-white text-black' : 'text-zinc-300 hover:bg-white/5'
+              }`}
+              aria-pressed={activeTab === 'cards'}
+            >
+              <WalletCards size={18} className="mr-2" />
+              Cards
+              <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded-full ${
+                activeTab === 'cards' ? 'bg-black/10 text-black' : 'bg-white/10 text-zinc-200'
+              }`}>
+                {cards.length}
+              </span>
+            </button>
+            <button
+              onClick={() => navigate('/charts')}
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all text-zinc-300 hover:bg-white/5"
+              title="Charts"
+            >
+              <BarChart3 size={18} className="mr-2" />
+              Charts
+            </button>
+          </div>
           <button 
             onClick={() => navigate('/settings')}
             className="flex items-center px-4 py-2 text-sm font-medium bg-zinc-900 border border-white/10 rounded-lg hover:border-white/30 transition-all"
@@ -97,7 +168,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
       <div className="grid gap-8">
         {/* Account Selection Section */}
         <section className="glass-card p-8">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-4">Select Account</label>
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              {activeTab === 'jars' ? 'Select Jar' : 'Select Card'}
+            </label>
+            <button
+              onClick={() => loadAccounts({ forceRefresh: true })}
+              className="flex items-center text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-white transition-colors"
+              title="Refresh accounts"
+            >
+              <RefreshCcw size={14} className="mr-2" />
+              Refresh
+            </button>
+          </div>
           <div className="relative">
             <select 
               value={selectedAccountId}
@@ -105,13 +188,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               className="block w-full pl-4 pr-10 py-3 bg-zinc-950 border border-white/10 text-white rounded-lg appearance-none focus:outline-none focus:border-white/30 transition-all"
             >
               {loading ? (
-                <option>Loading accounts...</option>
-              ) : accounts.length === 0 ? (
-                <option>No accounts found</option>
+                <option>Loading...</option>
+              ) : visibleAccounts.length === 0 ? (
+                <option>{activeTab === 'jars' ? 'No jars found' : 'No cards found'}</option>
               ) : (
-                accounts.map(acc => (
+                visibleAccounts.map(acc => (
                   <option key={acc.id} value={acc.id} className="bg-zinc-950">
-                    {acc.title || 'Untitled'} ({acc.type}) - {(acc.balance / 100).toFixed(2)}
+                    {acc.title || 'Untitled'}{acc.type === 'jar' && acc.is_budget ? ' • Budget' : ''} - {(acc.balance / 100).toFixed(2)}
                   </option>
                 ))
               )}
@@ -127,6 +210,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
                 <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">Account Details</p>
                 <p className="text-xl font-bold mt-1">{selectedAccount.title || 'Main Account'}</p>
                 <p className="text-sm text-zinc-400 mt-0.5">{selectedAccount.type} • {selectedAccount.id}</p>
+                {selectedAccount.type === 'jar' ? (
+                  <div className="mt-4 flex items-center gap-3">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={selectedIsBudget}
+                        onChange={handleToggleBudget}
+                        disabled={savingBudget}
+                        className="h-4 w-4 accent-white disabled:opacity-50"
+                        aria-label="Mark jar as budget"
+                      />
+                      <span className="text-sm text-zinc-300">Budget jar</span>
+                    </label>
+                    {savingBudget ? (
+                      <span className="text-xs text-zinc-500">Saving…</span>
+                    ) : selectedIsBudget ? (
+                      <span className="text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-md border border-white/10 bg-white/5 text-zinc-200">
+                        Budget
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div className="sm:text-right">
                 <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">Available Balance</p>

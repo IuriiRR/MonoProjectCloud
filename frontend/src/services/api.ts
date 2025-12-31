@@ -67,6 +67,10 @@ export interface Account {
   currency: any;
   balance: number;
   title?: string;
+  is_budget?: boolean;
+  is_active?: boolean;
+  goal?: number | null;
+  invested?: number;
 }
 
 export interface Transaction {
@@ -75,6 +79,34 @@ export interface Transaction {
   description: string;
   amount: number;
   balance: number;
+}
+
+export interface AccountUpdate {
+  type?: string;
+  send_id?: string | null;
+  currency?: any;
+  balance?: number;
+  is_active?: boolean;
+  title?: string | null;
+  goal?: number | null;
+  is_budget?: boolean;
+  invested?: number;
+}
+
+type AccountsCacheEntry = {
+  fetchedAt: number;
+  accounts: Account[];
+};
+
+const ACCOUNTS_CACHE_TTL_MS = 30_000;
+const accountsCache = new Map<string, AccountsCacheEntry>();
+
+export function clearAccountsCache(userId?: string) {
+  if (!userId) {
+    accountsCache.clear();
+    return;
+  }
+  accountsCache.delete(userId);
 }
 
 export const fetchUserProfile = async (userId: string): Promise<UserProfile> => {
@@ -113,6 +145,28 @@ export const fetchAccounts = async (userId: string): Promise<Account[]> => {
   return data.accounts as Account[];
 };
 
+export const fetchAccountsCached = async (
+  userId: string,
+  opts?: { forceRefresh?: boolean }
+): Promise<Account[]> => {
+  const forceRefresh = Boolean(opts?.forceRefresh);
+  const cached = accountsCache.get(userId);
+  const now = Date.now();
+  if (!forceRefresh && cached && now - cached.fetchedAt < ACCOUNTS_CACHE_TTL_MS) {
+    return cached.accounts;
+  }
+  const accounts = await fetchAccounts(userId);
+  accountsCache.set(userId, { accounts, fetchedAt: now });
+  return accounts;
+};
+
+function _upsertAccountInCache(userId: string, updated: Account) {
+  const cached = accountsCache.get(userId);
+  if (!cached) return;
+  const next = cached.accounts.map((a) => (a.id === updated.id ? { ...a, ...updated } : a));
+  accountsCache.set(userId, { accounts: next, fetchedAt: cached.fetchedAt });
+}
+
 export const createAccount = async (userId: string, account: any): Promise<Account> => {
   const data = await apiFetchJson(`${ACCOUNTS_API_URL}/users/${userId}/accounts`, {
     method: 'POST',
@@ -120,6 +174,21 @@ export const createAccount = async (userId: string, account: any): Promise<Accou
     body: JSON.stringify(account),
   });
   return data.account as Account;
+};
+
+export const updateAccount = async (
+  userId: string,
+  accountId: string,
+  updates: AccountUpdate
+): Promise<Account> => {
+  const data = await apiFetchJson(`${ACCOUNTS_API_URL}/users/${userId}/accounts/${accountId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  const account = data.account as Account;
+  _upsertAccountInCache(userId, account);
+  return account;
 };
 
 export const fetchTransactions = async (userId: string, accountId: string): Promise<Transaction[]> => {

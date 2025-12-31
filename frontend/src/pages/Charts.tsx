@@ -3,7 +3,7 @@ import { ArrowLeft, BarChart3, Info } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Account, fetchAccounts, fetchBalanceChartData } from '../services/api';
+import { Account, fetchAccountsCached, fetchBalanceChartData } from '../services/api';
 
 interface ChartsProps {
   user: User;
@@ -14,6 +14,7 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
   const [chartData, setChartData] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [budgetOnly, setBudgetOnly] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -24,7 +25,7 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
     try {
       setLoading(true);
       const [accounts, data] = await Promise.all([
-        fetchAccounts(user.uid),
+        fetchAccountsCached(user.uid),
         fetchBalanceChartData(user.uid)
       ]);
 
@@ -51,6 +52,8 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
 
   if (loading) return <div className="flex items-center justify-center h-screen">Loading charts...</div>;
 
+  const visibleJars = budgetOnly ? jars.filter(j => Boolean(j.is_budget)) : jars;
+
   return (
     <div className="min-h-screen bg-black py-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-8">
@@ -62,10 +65,22 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
             <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
             Back to Dashboard
           </button>
-          <h1 className="text-3xl font-bold flex items-center tracking-tight">
-            <BarChart3 className="mr-3 text-white" />
-            Jar Balance Trends
-          </h1>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <h1 className="text-3xl font-bold flex items-center tracking-tight">
+              <BarChart3 className="mr-3 text-white" />
+              Jar Balance Trends
+            </h1>
+            <label className="flex items-center gap-3 cursor-pointer select-none self-start sm:self-auto">
+              <input
+                type="checkbox"
+                checked={budgetOnly}
+                onChange={(e) => setBudgetOnly(e.target.checked)}
+                className="h-4 w-4 accent-white"
+                aria-label="Show budget jars only"
+              />
+              <span className="text-sm text-zinc-300">Budget only</span>
+            </label>
+          </div>
         </header>
 
         {error && (
@@ -74,19 +89,30 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
           </div>
         )}
 
-        {jars.length === 0 ? (
+        {visibleJars.length === 0 ? (
           <div className="glass-card p-12 text-center">
             <Info className="mx-auto mb-6 text-zinc-600" size={48} />
             <h2 className="text-2xl font-bold mb-2">No Jars Found</h2>
-            <p className="text-zinc-500">Only accounts of type "jar" are shown on this page.</p>
+            <p className="text-zinc-500">
+              {budgetOnly
+                ? 'No budget jars found. Disable “Budget only” to view all jars.'
+                : 'Only accounts of type "jar" are shown on this page.'}
+            </p>
           </div>
         ) : (
           <div className="grid gap-12">
-            {jars.map(jar => (
+            {visibleJars.map(jar => (
               <div key={jar.id} className="glass-card p-8">
                 <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <h3 className="text-2xl font-bold tracking-tight">{jar.title || 'Untitled Jar'}</h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-2xl font-bold tracking-tight">{jar.title || 'Untitled Jar'}</h3>
+                      {jar.is_budget ? (
+                        <span className="text-[11px] font-bold uppercase tracking-widest px-2 py-1 rounded-md border border-white/10 bg-white/5 text-zinc-200">
+                          Budget
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-sm text-zinc-500 mt-1 font-mono">{jar.id}</p>
                   </div>
                   <div className="sm:text-right">

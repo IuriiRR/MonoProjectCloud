@@ -129,6 +129,37 @@ def test_patch_requires_fields(app):
     assert _json(resp)["error"] == "No updatable fields provided"
 
 
+def test_patch_can_toggle_is_budget(app):
+    _create_user(app, "u1")
+    with app.test_request_context(
+        "/users/u1/accounts",
+        method="POST",
+        json={
+            "id": "a1",
+            "type": "jar",
+            "currency": {"code": 980},
+            "balance": 0,
+            "is_budget": False,
+        },
+    ):
+        resp = accounts_api(flask_request)
+    assert resp.status_code == 201
+
+    with app.test_request_context(
+        "/users/u1/accounts/a1", method="PATCH", json={"is_budget": True}
+    ):
+        resp2 = accounts_api(flask_request)
+    assert resp2.status_code == 200
+    assert _json(resp2)["account"]["is_budget"] is True
+
+    with app.test_request_context(
+        "/users/u1/accounts/a1", method="PATCH", json={"is_budget": False}
+    ):
+        resp3 = accounts_api(flask_request)
+    assert resp3.status_code == 200
+    assert _json(resp3)["account"]["is_budget"] is False
+
+
 def test_delete_account(app):
     _create_user(app, "u1")
     with app.test_request_context(
