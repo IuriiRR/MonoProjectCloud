@@ -15,7 +15,7 @@ cd "$(dirname "$0")/../tf"
 
 echo "Fetching Terraform outputs..."
 
-if ! tf_has_output "users_api_url" || ! tf_has_output "accounts_api_url" || ! tf_has_output "transactions_api_url"; then
+if ! tf_has_output "users_api_url" || ! tf_has_output "accounts_api_url" || ! tf_has_output "transactions_api_url" || ! tf_has_output "report_api_url"; then
   echo "ERROR: Missing backend outputs in Terraform state."
   echo "Run: (cd tf && terraform apply) first."
   exit 1
@@ -37,6 +37,7 @@ fi
 USERS_API_URL=$(terraform output -raw users_api_url)
 ACCOUNTS_API_URL=$(terraform output -raw accounts_api_url)
 TRANSACTIONS_API_URL=$(terraform output -raw transactions_api_url)
+REPORT_API_URL=$(terraform output -raw report_api_url)
 
 export FIREBASE_CONFIG_JSON
 FIREBASE_CONFIG_JSON=$(terraform output -json firebase_config)
@@ -85,6 +86,7 @@ rm -f .env .env.production .env.production.local .env.local 2>/dev/null || true
 export VITE_USERS_API_URL="${USERS_API_URL}"
 export VITE_ACCOUNTS_API_URL="${ACCOUNTS_API_URL}"
 export VITE_TRANSACTIONS_API_URL="${TRANSACTIONS_API_URL}"
+export VITE_REPORT_API_URL="${REPORT_API_URL}"
 export VITE_FIREBASE_API_KEY="${FIREBASE_API_KEY}"
 export VITE_FIREBASE_AUTH_DOMAIN="${FIREBASE_AUTH_DOMAIN}"
 export VITE_FIREBASE_PROJECT_ID="${PROJECT_ID}"

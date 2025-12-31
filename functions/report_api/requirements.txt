@@ -1,0 +1,10 @@
+functions-framework==3.8.3
+Flask==3.0.3
+google-cloud-firestore==2.16.1
+pydantic==2.9.2
+firebase-admin==6.5.0
+
+# Optional (used only if GEMINI_API_KEY is set).
+# Use the official "Google Gen AI SDK" (python-genai). The older "google-generativeai" SDK is deprecated.
+google-genai==0.8.0
+

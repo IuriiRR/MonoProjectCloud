@@ -44,6 +44,12 @@ resource "google_project_service" "cloudscheduler" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "secretmanager" {
+  project            = var.project_id
+  service            = "secretmanager.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_firebase_project" "default" {
   provider   = google-beta
   project    = var.project_id
@@ -166,6 +172,18 @@ resource "google_storage_bucket_object" "sync_transactions_src" {
   source = data.archive_file.sync_transactions_zip.output_path
 }
 
+data "archive_file" "report_api_zip" {
+  type        = "zip"
+  source_dir  = var.report_source_dir
+  output_path = "${path.module}/.build/report_api.zip"
+}
+
+resource "google_storage_bucket_object" "report_api_src" {
+  name   = "report_api/${data.archive_file.report_api_zip.output_sha}.zip"
+  bucket = google_storage_bucket.functions_src.name
+  source = data.archive_file.report_api_zip.output_path
+}
+
 resource "google_service_account" "users_api" {
   account_id   = "users-api-sa"
   display_name = "users-api Cloud Function service account"
@@ -189,6 +207,11 @@ resource "google_service_account" "sync_worker" {
 resource "google_service_account" "sync_transactions" {
   account_id   = "sync-transactions-sa"
   display_name = "sync-transactions Cloud Function service account"
+}
+
+resource "google_service_account" "report_api" {
+  account_id   = "report-api-sa"
+  display_name = "report-api Cloud Function service account"
 }
 
 resource "google_project_iam_member" "users_api_firestore_access" {
@@ -219,6 +242,37 @@ resource "google_project_iam_member" "sync_transactions_firestore_access" {
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.sync_transactions.email}"
+}
+
+resource "google_project_iam_member" "report_api_firestore_access" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.report_api.email}"
+}
+
+resource "google_secret_manager_secret" "gemini_api_key" {
+  project   = var.project_id
+  secret_id = "gemini-api-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "gemini_api_key" {
+  # Only create a secret version when a non-empty key is provided.
+  # Otherwise the API errors with: "Field [payload] is required."
+  count       = length(trimspace(var.gemini_api_key)) > 0 ? 1 : 0
+  secret      = google_secret_manager_secret.gemini_api_key.id
+  secret_data = var.gemini_api_key
+}
+
+resource "google_secret_manager_secret_iam_member" "report_api_secret_access" {
+  secret_id = google_secret_manager_secret.gemini_api_key.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.report_api.email}"
 }
 
 resource "google_cloudfunctions2_function" "users_api" {
@@ -312,6 +366,54 @@ resource "google_cloudfunctions2_function" "transactions_api" {
       INTERNAL_API_KEY     = var.internal_api_key
     }
   }
+}
+
+resource "google_cloudfunctions2_function" "report_api" {
+  name     = var.report_function_name
+  location = var.region
+
+  build_config {
+    runtime     = var.runtime
+    entry_point = var.report_entry_point
+
+    source {
+      storage_source {
+        bucket = google_storage_bucket.functions_src.name
+        object = google_storage_bucket_object.report_api_src.name
+      }
+    }
+  }
+
+  service_config {
+    available_memory      = "256M"
+    timeout_seconds       = 120
+    max_instance_count    = 3
+    ingress_settings      = "ALLOW_ALL"
+    service_account_email = google_service_account.report_api.email
+
+    environment_variables = {
+      FIRESTORE_PROJECT_ID = var.project_id
+      AUTH_MODE            = var.auth_mode
+      INTERNAL_API_KEY     = var.internal_api_key
+      REPORT_TIMEZONE      = var.report_timezone
+    }
+
+    dynamic "secret_environment_variables" {
+      for_each = length(trimspace(var.gemini_api_key)) > 0 ? [1] : []
+      content {
+        key        = "GEMINI_API_KEY"
+        project_id = var.project_id
+        secret     = google_secret_manager_secret.gemini_api_key.secret_id
+        version    = "latest"
+      }
+    }
+  }
+
+  depends_on = [
+    google_storage_bucket_object.report_api_src,
+    google_project_iam_member.report_api_firestore_access,
+    google_secret_manager_secret_iam_member.report_api_secret_access,
+  ]
 }
 
 resource "google_cloudfunctions2_function" "sync_worker" {
@@ -437,6 +539,13 @@ resource "google_cloud_run_service_iam_member" "accounts_api_invoker" {
 resource "google_cloud_run_service_iam_member" "transactions_api_invoker" {
   location = google_cloudfunctions2_function.transactions_api.location
   service  = google_cloudfunctions2_function.transactions_api.service_config[0].service
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_service_iam_member" "report_api_invoker" {
+  location = google_cloudfunctions2_function.report_api.location
+  service  = google_cloudfunctions2_function.report_api.service_config[0].service
   role     = "roles/run.invoker"
   member   = "allUsers"
 }

@@ -105,6 +105,37 @@ variable "sync_transactions_source_dir" {
   default     = "../functions/sync_transactions"
 }
 
+variable "report_function_name" {
+  type        = string
+  description = "Cloud Function name (report_api)."
+  default     = "report-api"
+}
+
+variable "report_entry_point" {
+  type        = string
+  description = "Python function entry point (report_api)."
+  default     = "report_api"
+}
+
+variable "report_source_dir" {
+  type        = string
+  description = "Directory containing the function source + requirements.txt (report_api)."
+  default     = "../functions/report_api"
+}
+
+variable "report_timezone" {
+  type        = string
+  description = "Default timezone for daily reports (used when tz query param is omitted)."
+  default     = "Europe/Kyiv"
+}
+
+variable "gemini_api_key" {
+  type        = string
+  description = "Gemini API key (stored in Secret Manager and injected into report_api as GEMINI_API_KEY)."
+  sensitive   = true
+  default     = ""
+}
+
 variable "bucket_name" {
   type        = string
   description = "GCS bucket to store function source archive."

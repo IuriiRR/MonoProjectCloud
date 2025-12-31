@@ -57,6 +57,25 @@ services:
     ports:
       - "8083:8083"
 
+  report_api:
+    build:
+      context: .
+      dockerfile: Dockerfile.report_api
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+      - FIRESTORE_PROJECT_ID=demo-monobank
+      - FIREBASE_AUTH_EMULATOR_HOST=firestore:9099
+      - INTERNAL_API_KEY=dev-internal-key
+      - REPORT_TIMEZONE=Europe/Kyiv
+      # Optional: enable Gemini agent loop locally
+      # - GEMINI_API_KEY=your_key_here
+    env_file:
+      - .env
+    depends_on:
+      - firestore
+    ports:
+      - "8086:8086"
+
   sync_worker:
     build:
       context: .
@@ -101,6 +120,7 @@ services:
       - VITE_USERS_API_URL=http://localhost:8081
       - VITE_ACCOUNTS_API_URL=http://localhost:8082
       - VITE_TRANSACTIONS_API_URL=http://localhost:8083
+      - VITE_REPORT_API_URL=http://localhost:8086
     ports:
       - "3000:3000"
     volumes:
@@ -110,4 +130,5 @@ services:
       - users_api
       - accounts_api
       - transactions_api
+      - report_api
       - firestore

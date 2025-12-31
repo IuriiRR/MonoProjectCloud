@@ -39,6 +39,10 @@
             "value": "http://localhost:8085"
         },
         {
+            "key": "report_url",
+            "value": "http://localhost:8086"
+        },
+        {
             "key": "firebase_id_token",
             "value": "<paste_firebase_id_token_here>"
         },
@@ -568,6 +572,49 @@
                                 "accounts",
                                 "{{account_id}}",
                                 "transactions"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "report_api",
+            "item": [
+                {
+                    "name": "Daily report",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{firebase_id_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{report_url}}/users/{{user_id}}/reports/daily?date=2024-01-01&tz=Europe/Kyiv&llm=1",
+                            "host": [
+                                "{{report_url}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_id}}",
+                                "reports",
+                                "daily"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date",
+                                    "value": "2024-01-01"
+                                },
+                                {
+                                    "key": "tz",
+                                    "value": "Europe/Kyiv"
+                                },
+                                {
+                                    "key": "llm",
+                                    "value": "1"
+                                }
                             ]
                         }
                     }

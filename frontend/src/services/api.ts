@@ -3,6 +3,7 @@ import { auth } from './firebase';
 const USERS_API_URL = import.meta.env.VITE_USERS_API_URL || 'http://localhost:8081';
 const ACCOUNTS_API_URL = import.meta.env.VITE_ACCOUNTS_API_URL || 'http://localhost:8082';
 const TRANSACTIONS_API_URL = import.meta.env.VITE_TRANSACTIONS_API_URL || 'http://localhost:8083';
+const REPORT_API_URL = import.meta.env.VITE_REPORT_API_URL || 'http://localhost:8086';
 
 export class ApiError extends Error {
   status: number;
@@ -79,6 +80,25 @@ export interface Transaction {
   description: string;
   amount: number;
   balance: number;
+}
+
+export interface DailySpendCoverage {
+  tx_id: string;
+  covered: boolean;
+  covered_cents: number;
+  uncovered_cents: number;
+  sources: Array<{ tx_id: string; amount_cents: number }>;
+  reason?: string | null;
+}
+
+export interface DailyReportResponse {
+  user_id: string;
+  date: string;
+  timezone: string;
+  totals: { spend_total: number; earn_total: number; net: number };
+  spends: DailySpendCoverage[];
+  report_markdown: string;
+  report_html?: string | null;
 }
 
 export interface AccountUpdate {
@@ -206,3 +226,14 @@ export const fetchBalanceChartData = async (userId: string): Promise<Record<stri
   return data.charts as Record<string, {time: number, balance: number}[]>;
 };
 
+export const fetchDailyReport = async (
+  userId: string,
+  opts?: { date?: string; tz?: string; llm?: boolean }
+): Promise<DailyReportResponse> => {
+  const qs = new URLSearchParams();
+  if (opts?.date) qs.set('date', opts.date);
+  if (opts?.tz) qs.set('tz', opts.tz);
+  if (opts?.llm === false) qs.set('llm', '0');
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return (await apiFetchJson(`${REPORT_API_URL}/users/${userId}/reports/daily${suffix}`)) as DailyReportResponse;
+};

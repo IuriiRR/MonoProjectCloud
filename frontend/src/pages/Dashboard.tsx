@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { fetchAccountsCached, fetchTransactions, Account, Transaction, updateAccount } from '../services/api';
-import { ChevronDown, LogOut, RefreshCcw, Settings as SettingsIcon, BarChart3, WalletCards, PiggyBank } from 'lucide-react';
+import { ChevronDown, LogOut, RefreshCcw, Settings as SettingsIcon, BarChart3, WalletCards, PiggyBank, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface DashboardProps {
@@ -139,6 +139,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
             >
               <BarChart3 size={18} className="mr-2" />
               Charts
+            </button>
+            <button
+              onClick={() => navigate('/report')}
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-md transition-all text-zinc-300 hover:bg-white/5"
+              title="Daily Report"
+            >
+              <FileText size={18} className="mr-2" />
+              Report
             </button>
           </div>
           <button 

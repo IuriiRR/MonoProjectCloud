@@ -1,13 +1,17 @@
-project_id   = "your-gcp-project-id"
-region       = "europe-west1"
-function_name = "users-api"
-accounts_function_name = "accounts-api"
-transactions_function_name = "transactions-api"
-sync_worker_function_name = "sync-worker"
+project_id                    = "your-gcp-project-id"
+region                        = "europe-west1"
+function_name                 = "users-api"
+accounts_function_name        = "accounts-api"
+transactions_function_name    = "transactions-api"
+sync_worker_function_name     = "sync-worker"
 sync_transactions_function_name = "sync-transactions"
 
+# New: daily report API (Cloud Function Gen2)
+report_function_name = "report-api"
+report_timezone      = "Europe/Kyiv"
+
 # Must be globally unique
-bucket_name  = "your-gcp-project-id-functions-src"
+bucket_name = "your-gcp-project-id-functions-src"
 
 # Optional but recommended (needed if you want Terraform to enable Google sign-in via Identity Platform).
 # Create an OAuth 2.0 Client ID in Google Cloud Console (APIs & Services -> Credentials) and paste values here.
@@ -20,5 +24,8 @@ internal_api_key = "change-me"
 
 # Auth mode for HTTP APIs: "enabled" (prod) or "disabled" (dev-only).
 auth_mode = "enabled"
+
+# Optional: enable Gemini agent loop in report_api (leave empty for deterministic-only mode)
+# gemini_api_key = "YOUR_GEMINI_API_KEY"
 
 

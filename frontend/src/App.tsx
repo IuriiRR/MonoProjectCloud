@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import Charts from './pages/Charts';
+import Report from './pages/Report';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -62,6 +63,10 @@ function App() {
         <Route 
           path="/charts" 
           element={user ? <Charts user={user} /> : <Navigate to="/login" />} 
+        />
+        <Route 
+          path="/report"
+          element={user ? <Report user={user} /> : <Navigate to="/login" />}
         />
         <Route 
           path="/" 
