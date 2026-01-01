@@ -8,3 +8,4 @@ firebase-admin==6.5.0
 # Use the official "Google Gen AI SDK" (python-genai). The older "google-generativeai" SDK is deprecated.
 google-genai==0.8.0
 
+sentry-sdk==2.44.0

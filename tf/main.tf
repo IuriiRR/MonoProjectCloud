@@ -302,6 +302,8 @@ resource "google_cloudfunctions2_function" "users_api" {
       FIRESTORE_PROJECT_ID = var.project_id
       AUTH_MODE            = var.auth_mode
       INTERNAL_API_KEY     = var.internal_api_key
+      SENTRY_DSN           = var.sentry_dsn
+      DISABLE_SENTRY       = var.sentry_disabled ? "1" : "0"
     }
   }
 }
@@ -333,6 +335,8 @@ resource "google_cloudfunctions2_function" "accounts_api" {
       FIRESTORE_PROJECT_ID = var.project_id
       AUTH_MODE            = var.auth_mode
       INTERNAL_API_KEY     = var.internal_api_key
+      SENTRY_DSN           = var.sentry_dsn
+      DISABLE_SENTRY       = var.sentry_disabled ? "1" : "0"
     }
   }
 }
@@ -364,6 +368,8 @@ resource "google_cloudfunctions2_function" "transactions_api" {
       FIRESTORE_PROJECT_ID = var.project_id
       AUTH_MODE            = var.auth_mode
       INTERNAL_API_KEY     = var.internal_api_key
+      SENTRY_DSN           = var.sentry_dsn
+      DISABLE_SENTRY       = var.sentry_disabled ? "1" : "0"
     }
   }
 }
@@ -396,6 +402,8 @@ resource "google_cloudfunctions2_function" "report_api" {
       AUTH_MODE            = var.auth_mode
       INTERNAL_API_KEY     = var.internal_api_key
       REPORT_TIMEZONE      = var.report_timezone
+      SENTRY_DSN           = var.sentry_dsn
+      DISABLE_SENTRY       = var.sentry_disabled ? "1" : "0"
     }
 
     dynamic "secret_environment_variables" {
@@ -445,6 +453,8 @@ resource "google_cloudfunctions2_function" "sync_worker" {
       ACCOUNTS_API_URL      = google_cloudfunctions2_function.accounts_api.service_config[0].uri
       SYNC_TRANSACTIONS_URL = google_cloudfunctions2_function.sync_transactions.service_config[0].uri
       INTERNAL_API_KEY      = var.internal_api_key
+      SENTRY_DSN            = var.sentry_dsn
+      DISABLE_SENTRY        = var.sentry_disabled ? "1" : "0"
     }
   }
 
@@ -483,6 +493,8 @@ resource "google_cloudfunctions2_function" "sync_transactions" {
       ACCOUNTS_API_URL     = google_cloudfunctions2_function.accounts_api.service_config[0].uri
       TRANSACTIONS_API_URL = google_cloudfunctions2_function.transactions_api.service_config[0].uri
       INTERNAL_API_KEY     = var.internal_api_key
+      SENTRY_DSN           = var.sentry_dsn
+      DISABLE_SENTRY       = var.sentry_disabled ? "1" : "0"
     }
   }
 

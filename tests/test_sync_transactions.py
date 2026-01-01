@@ -1,6 +1,9 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from functions.sync_transactions.main import sync_transactions
+
 
 @pytest.fixture
 def mock_requests():

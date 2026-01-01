@@ -3,5 +3,6 @@ Flask==3.0.3
 google-cloud-firestore==2.16.1
 pydantic==2.9.2
 firebase-admin==6.5.0
+sentry-sdk==2.44.0
 
 

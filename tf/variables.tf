@@ -179,4 +179,17 @@ variable "scheduler_time_zone" {
   default     = "Etc/UTC"
 }
 
+variable "sentry_dsn" {
+  type        = string
+  description = "Sentry DSN. Leave empty to disable Sentry."
+  sensitive   = true
+  default     = ""
+}
+
+variable "sentry_disabled" {
+  type        = bool
+  description = "When true, sets DISABLE_SENTRY=1 for all functions."
+  default     = false
+}
+
 

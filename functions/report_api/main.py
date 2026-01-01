@@ -1,11 +1,14 @@
 import json
 import os
+import logging
 from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 import functions_framework
 from flask import Response, make_response, request
+
+logging.basicConfig(level=logging.INFO)
 
 try:  # pragma: no cover
     from google.cloud import firestore  # type: ignore
@@ -25,6 +28,35 @@ except Exception:  # pragma: no cover
     FailedPrecondition = Exception  # type: ignore
 
 from pydantic import ValidationError
+
+# Optional Sentry
+def _is_truthy(v: str | None) -> bool:
+    return (v or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _init_sentry() -> None:
+    dsn = (os.getenv("SENTRY_DSN") or "").strip()
+    if not dsn or _is_truthy(os.getenv("DISABLE_SENTRY")):
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.gcp import GcpIntegration
+
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[GcpIntegration()],
+            send_default_pii=True,
+            enable_logs=True,
+            traces_sample_rate=1.0,
+            profile_session_sample_rate=1.0,
+            profile_lifecycle="trace",
+        )
+    except Exception:
+        # Never fail the function due to Sentry init issues.
+        return
+
+
+_init_sentry()
 
 # Support both "run as a package" (relative imports) and "run from this folder" (local imports).
 try:  # pragma: no cover

@@ -28,4 +28,8 @@ auth_mode = "enabled"
 # Optional: enable Gemini agent loop in report_api (leave empty for deterministic-only mode)
 # gemini_api_key = "YOUR_GEMINI_API_KEY"
 
+# Optional: Sentry (leave empty to disable)
+# sentry_dsn      = "https://....@o....ingest.sentry.io/...."
+# sentry_disabled = false
+
 

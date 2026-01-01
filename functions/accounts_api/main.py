@@ -1,8 +1,42 @@
 import json
+import logging
+import os
 from typing import Any, Dict, Tuple
 
 import functions_framework
 from flask import Response, make_response
+
+logging.basicConfig(level=logging.INFO)
+
+
+# Optional Sentry
+def _is_truthy(v: str | None) -> bool:
+    return (v or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _init_sentry() -> None:
+    dsn = (os.getenv("SENTRY_DSN") or "").strip()
+    if not dsn or _is_truthy(os.getenv("DISABLE_SENTRY")):
+        return
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.gcp import GcpIntegration
+
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[GcpIntegration()],
+            send_default_pii=True,
+            enable_logs=True,
+            traces_sample_rate=1.0,
+            profile_session_sample_rate=1.0,
+            profile_lifecycle="trace",
+        )
+    except Exception:
+        # Never fail the function due to Sentry init issues.
+        return
+
+
+_init_sentry()
 try:  # pragma: no cover
     from google.cloud import firestore  # type: ignore
 except Exception:  # pragma: no cover
