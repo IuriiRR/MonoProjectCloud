@@ -359,7 +359,7 @@ resource "google_cloudfunctions2_function" "transactions_api" {
 
   service_config {
     available_memory      = "256M"
-    timeout_seconds       = 300
+    timeout_seconds       = 600
     max_instance_count    = 3
     ingress_settings      = "ALLOW_ALL"
     service_account_email = google_service_account.transactions_api.email
@@ -392,7 +392,7 @@ resource "google_cloudfunctions2_function" "report_api" {
 
   service_config {
     available_memory      = "256M"
-    timeout_seconds       = 120
+    timeout_seconds       = 600
     max_instance_count    = 3
     ingress_settings      = "ALLOW_ALL"
     service_account_email = google_service_account.report_api.email
@@ -483,7 +483,7 @@ resource "google_cloudfunctions2_function" "sync_transactions" {
 
   service_config {
     available_memory      = "256M"
-    timeout_seconds       = 300 # Transactions can take longer
+    timeout_seconds       = 600
     max_instance_count    = 3
     ingress_settings      = "ALLOW_ALL"
     service_account_email = google_service_account.sync_transactions.email
