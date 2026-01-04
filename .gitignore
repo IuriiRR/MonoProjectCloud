@@ -39,3 +39,4 @@ tf/terraform.tfstate.backup
 **/tmp
 
 .firebase
+.DS_Store

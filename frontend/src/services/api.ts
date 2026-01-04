@@ -226,6 +226,19 @@ export const fetchBalanceChartData = async (userId: string): Promise<Record<stri
   return data.charts as Record<string, {time: number, balance: number}[]>;
 };
 
+export interface MonthlySummary {
+  month: string;
+  start_balance: number;
+  end_balance: number;
+  budget: number;
+  spent: number;
+}
+
+export const fetchMonthlySummary = async (userId: string): Promise<Record<string, MonthlySummary[]>> => {
+  const data = await apiFetchJson(`${TRANSACTIONS_API_URL}/users/${userId}/charts/monthly_summary`);
+  return data.summary as Record<string, MonthlySummary[]>;
+};
+
 export const fetchDailyReport = async (
   userId: string,
   opts?: { date?: string; tz?: string; llm?: boolean }

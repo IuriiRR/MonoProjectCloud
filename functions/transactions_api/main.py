@@ -1,10 +1,12 @@
+import datetime
 import json
-import os
 import logging
+import os
 from typing import Any, Dict, Tuple
 
 import functions_framework
 from flask import Response, make_response, request
+
 try:  # pragma: no cover
     from google.cloud import firestore  # type: ignore
 except Exception:  # pragma: no cover
@@ -140,6 +142,7 @@ def transactions_api(request):
                         "GET /transactions",
                         "GET /users/{user_id}/transactions",
                         "GET /users/{user_id}/charts/balance",
+                        "GET /users/{user_id}/charts/monthly_summary",
                         "GET /users/{user_id}/accounts/{account_id}/transactions",
                         "POST /users/{user_id}/accounts/{account_id}/transactions",
                         "GET /users/{user_id}/accounts/{account_id}/transactions/{transaction_id}",
@@ -253,6 +256,104 @@ def transactions_api(request):
                     chart_data[acc_id].append({"time": data.get("time"), "balance": data.get("balance")})
 
                 return _json_response({"charts": chart_data})
+            return _error("Method not allowed", 405)
+
+        # GET /users/{user_id}/charts/monthly_summary
+        if len(parts) == 4 and parts[2] == "charts" and parts[3] == "monthly_summary":
+            if request.method == "GET":
+                # 1. Get budget accounts
+                accounts_ref = db.collection("users").document(user_id).collection("accounts")
+                accounts_docs = accounts_ref.stream()
+                budget_accounts = [d.id for d in accounts_docs if d.to_dict().get("is_budget") is True]
+
+                if not budget_accounts:
+                    return _json_response({"summary": {}})
+
+                # 2. Get transactions for user, sorted by time ASC
+                query = (
+                    db.collection_group("transactions")
+                    .where("user_id", "==", user_id)
+                    .order_by("time", direction=firestore.Query.ASCENDING)
+                )
+
+                docs = query.stream()
+
+                # 3. Process
+                summary_data = {}
+
+                for d in docs:
+                    data = d.to_dict() or {}
+                    acc_id = data.get("account_id")
+
+                    if acc_id not in budget_accounts:
+                        continue
+
+                    if acc_id not in summary_data:
+                        summary_data[acc_id] = {}
+
+                    ts = data.get("time")
+                    # time is int (timestamp)
+                    dt = datetime.datetime.fromtimestamp(ts)
+                    month_key = dt.strftime("%Y-%m")
+
+                    if month_key not in summary_data[acc_id]:
+                        summary_data[acc_id][month_key] = {
+                            "transactions": [],
+                            "month": month_key
+                        }
+
+                    # We need amount and balance
+                    summary_data[acc_id][month_key]["transactions"].append({
+                        "id": d.id,
+                        "amount": data.get("amount", 0),
+                        "balance": data.get("balance", 0)
+                    })
+
+                # 4. Calculate stats
+                final_summary = {}
+                for acc_id, months in summary_data.items():
+                    final_summary[acc_id] = []
+                    # Sort months
+                    sorted_months = sorted(months.keys())
+                    for m_key in sorted_months:
+                        m_data = months[m_key]
+                        txs = m_data["transactions"]
+                        if not txs:
+                            continue
+
+                        # start balance: first tx balance - first tx amount
+                        first_tx = txs[0]
+                        start_balance = first_tx["balance"] - first_tx["amount"]
+
+                        last_tx = txs[-1]
+                        end_balance = last_tx["balance"]
+
+                        # budget: largest positive single transaction
+                        deposits = [t for t in txs if t["amount"] > 0]
+                        if deposits:
+                            budget_tx = max(deposits, key=lambda x: x["amount"])
+                            budget = budget_tx["amount"]
+                            budget_tx_id = budget_tx["id"]
+                        else:
+                            budget = 0
+                            budget_tx_id = None
+
+                        # spent: sum of all transactions EXCLUDING budget transaction
+                        total_sum = sum(t["amount"] for t in txs)
+                        if budget_tx_id:
+                            spent = total_sum - budget
+                        else:
+                            spent = total_sum
+
+                        final_summary[acc_id].append({
+                            "month": m_key,
+                            "start_balance": start_balance,
+                            "end_balance": end_balance,
+                            "budget": budget,
+                            "spent": spent
+                        })
+
+                return _json_response({"summary": final_summary})
             return _error("Method not allowed", 405)
 
         if len(parts) < 5 or parts[2] != "accounts" or parts[4] != "transactions":
