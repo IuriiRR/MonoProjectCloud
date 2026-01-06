@@ -38,6 +38,11 @@ output "sync_worker_scheduler_job_name" {
   value       = google_cloud_scheduler_job.sync_worker_hourly.name
 }
 
+output "daily_reports_scheduler_job_name" {
+  description = "Name of the Cloud Scheduler job that sends daily Telegram reports."
+  value       = google_cloud_scheduler_job.daily_reports_daily.name
+}
+
 output "firebase_hosting_url" {
   description = "The URL of the Firebase Hosting site."
   value       = "https://${google_firebase_hosting_site.main.site_id}.web.app"

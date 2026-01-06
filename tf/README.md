@@ -41,8 +41,9 @@ Auth-related vars:
 - `auth_mode`: keep as `"enabled"` for production. `"disabled"` is dev-only.
 
 Scheduler-related vars:
-- `sync_worker_schedule`: cron schedule for triggering `sync_worker` (default: hourly)
-- `scheduler_time_zone`: time zone used by Cloud Scheduler (default: `Etc/UTC`)
+- `sync_worker_schedule`: cron schedule for triggering `sync_worker` (default: 10:00, 14:00, 18:00, 22:00)
+- `daily_reports_schedule`: cron schedule for triggering daily Telegram reports send (default: 22:45 daily)
+- `scheduler_time_zone`: time zone used by Cloud Scheduler (default: `Europe/Kyiv`)
 
 ### Deploy
 
@@ -52,7 +53,7 @@ terraform init
 terraform apply
 ```
 
-Terraform will output `users_api_url`, `accounts_api_url`, and `sync_worker_scheduler_job_name` (plus other service URLs).
+Terraform will output `users_api_url`, `accounts_api_url`, `sync_worker_scheduler_job_name`, and `daily_reports_scheduler_job_name` (plus other service URLs).
 
 ### Telegram bot webhook setup
 

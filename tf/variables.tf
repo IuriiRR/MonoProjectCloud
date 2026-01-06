@@ -208,13 +208,21 @@ variable "auth_mode" {
 variable "sync_worker_schedule" {
   type        = string
   description = "Cron schedule for Cloud Scheduler job that triggers sync_worker."
-  default     = "0 * * * *"
+  # Default: 10:00, 14:00, 18:00, 22:00 (in scheduler_time_zone)
+  default = "0 10,14,18,22 * * *"
+}
+
+variable "daily_reports_schedule" {
+  type        = string
+  description = "Cron schedule for Cloud Scheduler job that sends Telegram daily reports to all users with daily_report enabled."
+  # Default: 22:45 every day (in scheduler_time_zone)
+  default = "45 22 * * *"
 }
 
 variable "scheduler_time_zone" {
   type        = string
   description = "Time zone used by Cloud Scheduler (e.g. 'Etc/UTC', 'Europe/Kyiv')."
-  default     = "Etc/UTC"
+  default     = "Europe/Kyiv"
 }
 
 variable "sentry_dsn" {

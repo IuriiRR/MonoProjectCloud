@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
 import { User } from 'firebase/auth';
-import { fetchUserProfile, initTelegramConnect, sendDailyReportToTelegram, updateUserProfile, UserProfile } from '../services/api';
+import { ArrowLeft, Key, RefreshCcw, Save } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Key, RefreshCcw } from 'lucide-react';
+import { fetchUserProfile, initTelegramConnect, sendDailyReportToTelegram, updateUserProfile, UserProfile } from '../services/api';
 
 interface SettingsProps {
   user: User;
@@ -115,7 +115,7 @@ const Settings: React.FC<SettingsProps> = ({ user }) => {
 
   return (
     <div className="max-w-2xl mx-auto p-4 sm:p-8 pt-12">
-      <button 
+      <button
         onClick={() => navigate('/')}
         className="flex items-center text-zinc-400 hover:text-white mb-12 transition-colors group"
       >
@@ -132,7 +132,7 @@ const Settings: React.FC<SettingsProps> = ({ user }) => {
         </div>
 
         <p className="text-zinc-500 mb-10 leading-relaxed">
-          Enter your Monobank personal API token to sync your accounts and transactions. 
+          Enter your Monobank personal API token to sync your accounts and transactions.
           You can get your token at <a href="https://api.monobank.ua/" target="_blank" rel="noopener noreferrer" className="text-white hover:underline underline-offset-4 font-medium">api.monobank.ua</a>.
         </p>
 
@@ -144,9 +144,9 @@ const Settings: React.FC<SettingsProps> = ({ user }) => {
             <label htmlFor="monoToken" className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-3">
               Personal API Token
             </label>
-            <input 
+            <input
               id="monoToken"
-              type="password" 
+              type="password"
               value={monoToken}
               onChange={(e) => setMonoToken(e.target.value)}
               placeholder="Paste your token here"
@@ -154,7 +154,7 @@ const Settings: React.FC<SettingsProps> = ({ user }) => {
             />
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={saving}
             className="flex items-center justify-center w-full py-4 btn-primary shadow-glow-white disabled:opacity-50"
@@ -246,7 +246,7 @@ const Settings: React.FC<SettingsProps> = ({ user }) => {
           <button
             type="button"
             onClick={handleSendDailyReportToTelegram}
-            disabled={tgWorking || !telegramConnected || !telegramReportsEnabled}
+            disabled={tgWorking || !telegramConnected}
             className="flex items-center justify-center w-full py-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl transition-colors disabled:opacity-50"
           >
             Send daily report to Telegram

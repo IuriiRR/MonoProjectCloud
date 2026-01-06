@@ -1,11 +1,12 @@
-import json
-import os
-import logging
 import html
+import json
+import logging
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-import secrets
 from typing import Any, Dict, Tuple
+from zoneinfo import ZoneInfo
 
 import functions_framework
 from flask import Response, make_response
@@ -69,7 +70,7 @@ def _json_response(payload: Any, status: int = 200) -> Response:
     # CORS (local dev convenience)
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type,Authorization,X-Internal-Api-Key"
     return resp
 
 
@@ -102,6 +103,20 @@ def _sha256_hex(s: str) -> str:
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _compute_iso_date(*, tz_name: str, offset_days: int) -> Tuple[str, str]:
+    """
+    Returns: (YYYY-MM-DD, normalized_tz_name)
+    """
+    tz_name = (tz_name or "").strip() or "Etc/UTC"
+    try:
+        tzinfo = ZoneInfo(tz_name)
+    except Exception:
+        tzinfo = timezone.utc
+        tz_name = "Etc/UTC"
+    now_local = datetime.now(tzinfo)
+    return (now_local + timedelta(days=offset_days)).date().isoformat(), tz_name
 
 
 def _http_json(url: str, *, method: str = "GET", headers: Dict[str, str] | None = None, body: Any | None = None) -> Any:
@@ -305,7 +320,116 @@ def users_api(request):
             return _json_response(
                 {
                     "service": "users_api",
-                    "endpoints": ["GET /telegram/connect?token=...&telegram_id=..."],
+                    "endpoints": [
+                        "GET /telegram/connect?token=...&telegram_id=...",
+                        "POST /telegram/reports/daily/send_enabled",
+                    ],
+                }
+            )
+
+        # Internal daily reports scheduler endpoint (requires X-Internal-Api-Key):
+        # POST /telegram/reports/daily/send_enabled
+        if len(parts) == 4 and parts[1] == "reports" and parts[2] == "daily" and parts[3] in ("send_enabled", "send-enabled"):
+            if request.method != "POST":
+                return _error("Method not allowed", 405)
+
+            uid, auth_err, auth_status = authenticate_request(request)
+            if auth_err:
+                return _json_response(auth_err, status=auth_status or 401)
+            if uid != INTERNAL_UID:
+                return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+            bot_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+            if not bot_token:
+                return _error("Server misconfigured: TELEGRAM_BOT_TOKEN is not set", 500)
+
+            report_api_url = (os.getenv("REPORT_API_URL") or "").strip()
+            if not report_api_url:
+                return _error("Server misconfigured: REPORT_API_URL is not set", 500)
+
+            internal_key = (os.getenv("INTERNAL_API_KEY") or "").strip()
+            if not internal_key:
+                return _error("Server misconfigured: INTERNAL_API_KEY is not set", 500)
+
+            body, err = _parse_json(request)
+            if err:
+                return err
+            body = body or {}
+
+            # Default behavior for scheduled sends: send for "yesterday" in REPORT_TIMEZONE.
+            tz = (str(body.get("tz") or "").strip() or os.getenv("REPORT_TIMEZONE") or "Europe/Kyiv").strip()
+            date = (str(body.get("date") or "").strip() or None)
+            offset_days_raw = body.get("offset_days")
+            try:
+                offset_days = int(offset_days_raw) if offset_days_raw is not None else -1
+            except Exception:
+                return _error("Invalid offset_days (must be integer)", 400)
+            if not date:
+                date, tz = _compute_iso_date(tz_name=tz, offset_days=offset_days)
+
+            llm = body.get("llm")
+
+            db = get_db()
+            users_ref = db.collection("users")
+
+            sent = 0
+            skipped_not_connected = 0
+            skipped_inactive = 0
+            errors: list[dict[str, Any]] = []
+            eligible = 0
+
+            from urllib.parse import urlencode
+
+            docs = users_ref.where("daily_report", "==", True).stream()
+            for doc in docs:
+                user_id = doc.id
+                user_data = doc.to_dict() or {}
+
+                if not bool(user_data.get("active", True)):
+                    skipped_inactive += 1
+                    continue
+
+                telegram_id = user_data.get("telegram_id")
+                if telegram_id is None:
+                    skipped_not_connected += 1
+                    continue
+
+                try:
+                    telegram_id_int = int(telegram_id)
+                except Exception:
+                    errors.append({"user_id": user_id, "error": "Invalid telegram_id stored for user"})
+                    continue
+
+                eligible += 1
+
+                qs: Dict[str, str] = {"date": date, "tz": tz}
+                if llm is False:
+                    qs["llm"] = "0"
+                url = f"{report_api_url}/users/{user_id}/reports/daily?{urlencode(qs)}"
+
+                try:
+                    report_payload = _http_json(url, method="GET", headers={"X-Internal-Api-Key": internal_key})
+                    report_md = ""
+                    if isinstance(report_payload, dict):
+                        report_md = str(report_payload.get("report_markdown") or "")
+                    if not report_md:
+                        report_md = "Daily report is empty."
+
+                    pretty_html = _report_markdown_to_telegram_html(report_md)
+                    _telegram_send_message(bot_token, telegram_id_int, pretty_html, parse_mode="HTML")
+                    sent += 1
+                except Exception as e:
+                    errors.append({"user_id": user_id, "error": str(e)})
+
+            return _json_response(
+                {
+                    "sent": sent,
+                    "eligible": eligible,
+                    "skipped_not_connected": skipped_not_connected,
+                    "skipped_inactive": skipped_inactive,
+                    "date": date,
+                    "tz": tz,
+                    "errors": errors,
                 }
             )
 
@@ -387,6 +511,7 @@ def users_api(request):
                     "POST /users/{user_id}/telegram/connect/init",
                     "POST /users/{user_id}/telegram/reports/daily/send",
                     "GET /telegram/connect?token=...&telegram_id=...",
+                    "POST /telegram/reports/daily/send_enabled",
                 ],
             }
         )
@@ -627,13 +752,6 @@ def users_api(request):
             telegram_id_int = int(telegram_id)
         except Exception:
             return _error("Invalid telegram_id stored for user", 500)
-
-        if not bool(user_data.get("daily_report", False)):
-            return _error(
-                "Telegram reports are disabled. Enable them in Settings first.",
-                400,
-                {"code": "TELEGRAM_REPORTS_DISABLED"},
-            )
 
         body, err = _parse_json(request)
         if err:

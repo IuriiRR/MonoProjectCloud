@@ -310,7 +310,7 @@ resource "google_cloudfunctions2_function" "users_api" {
 
   service_config {
     available_memory      = "256M"
-    timeout_seconds       = 60
+    timeout_seconds       = 600
     max_instance_count    = 3
     ingress_settings      = "ALLOW_ALL"
     service_account_email = google_service_account.users_api.email
@@ -320,6 +320,7 @@ resource "google_cloudfunctions2_function" "users_api" {
       AUTH_MODE             = var.auth_mode
       INTERNAL_API_KEY      = var.internal_api_key
       REPORT_API_URL        = google_cloudfunctions2_function.report_api.service_config[0].uri
+      REPORT_TIMEZONE       = var.report_timezone
       TELEGRAM_BOT_USERNAME = var.telegram_bot_username
       TELEGRAM_BOT_TOKEN    = var.telegram_bot_token
       SENTRY_DSN            = var.sentry_dsn
@@ -586,6 +587,36 @@ resource "google_cloud_scheduler_job" "sync_worker_hourly" {
   depends_on = [
     google_project_service.cloudscheduler,
     google_cloudfunctions2_function.sync_worker,
+  ]
+}
+
+# Daily trigger for sending Telegram daily reports (HTTP)
+resource "google_cloud_scheduler_job" "daily_reports_daily" {
+  name        = "daily-reports-daily"
+  description = "Daily send of Telegram reports for all users with daily_report enabled."
+  region      = var.region
+
+  schedule  = var.daily_reports_schedule
+  time_zone = var.scheduler_time_zone
+
+  attempt_deadline = "600s"
+
+  http_target {
+    uri         = "${google_cloudfunctions2_function.users_api.service_config[0].uri}/telegram/reports/daily/send_enabled"
+    http_method = "POST"
+
+    headers = {
+      Content-Type       = "application/json"
+      X-Internal-Api-Key = var.internal_api_key
+    }
+
+    # Default behavior on the server: offset_days=-1 (send yesterday) in REPORT_TIMEZONE.
+    body = base64encode("{}")
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloudfunctions2_function.users_api,
   ]
 }
 

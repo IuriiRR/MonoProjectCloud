@@ -31,6 +31,11 @@ internal_api_key = "change-me"
 # Auth mode for HTTP APIs: "enabled" (prod) or "disabled" (dev-only).
 auth_mode = "enabled"
 
+# Scheduler
+# scheduler_time_zone    = "Europe/Kyiv"
+# sync_worker_schedule   = "0 10,14,18,22 * * *"
+# daily_reports_schedule = "45 22 * * *"
+
 # Optional: enable Gemini agent loop in report_api (leave empty for deterministic-only mode)
 # gemini_api_key = "YOUR_GEMINI_API_KEY"
 
