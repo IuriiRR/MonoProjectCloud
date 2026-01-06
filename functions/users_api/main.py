@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import html
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import secrets
@@ -133,26 +134,148 @@ def _http_json(url: str, *, method: str = "GET", headers: Dict[str, str] | None 
         raise ValueError(f"HTTP {e.code} {url}: {raw}") from e
 
 
-def _telegram_send_message(bot_token: str, chat_id: int, text: str) -> None:
-    # Telegram hard-limit is 4096 chars per message.
-    max_len = 3900
+def _split_telegram_message(text: str, *, max_len: int = 3900) -> list[str]:
+    """
+    Telegram hard-limit is 4096 chars per message. We keep a safety margin.
+    Prefer splitting on newlines to avoid breaking formatting (e.g. HTML tags).
+    """
     t = text or ""
-    chunks: list[str] = []
-    while t:
-        chunks.append(t[:max_len])
-        t = t[max_len:]
-    if not chunks:
-        chunks = ["(empty report)"]
+    if not t:
+        return ["(empty report)"]
 
+    lines = t.split("\n")
+    chunks: list[str] = []
+    cur = ""
+
+    for line in lines:
+        candidate = line if not cur else (cur + "\n" + line)
+        if len(candidate) <= max_len:
+            cur = candidate
+            continue
+
+        if cur:
+            chunks.append(cur)
+            cur = line
+        else:
+            # A single line is too long. Hard-split it.
+            rest = line
+            while len(rest) > max_len:
+                chunks.append(rest[:max_len])
+                rest = rest[max_len:]
+            cur = rest
+
+    if cur:
+        chunks.append(cur)
+    return chunks or ["(empty report)"]
+
+
+def _render_inline_md_to_telegram_html(s: str) -> str:
+    """
+    Minimal markdown -> Telegram HTML converter for our report markdown.
+    Supports:
+      - `code` -> <code>code</code>
+      - **bold** -> <b>bold</b>
+    Everything else is HTML-escaped.
+    """
+    out: list[str] = []
+    i = 0
+    n = len(s or "")
+    while i < n:
+        next_code = s.find("`", i)
+        next_bold = s.find("**", i)
+        nexts = [p for p in (next_code, next_bold) if p != -1]
+        if not nexts:
+            out.append(html.escape(s[i:]))
+            break
+
+        j = min(nexts)
+        if j > i:
+            out.append(html.escape(s[i:j]))
+            i = j
+            continue
+
+        if s.startswith("`", i):
+            end = s.find("`", i + 1)
+            if end == -1:
+                out.append(html.escape(s[i:]))
+                break
+            out.append(f"<code>{html.escape(s[i + 1:end])}</code>")
+            i = end + 1
+            continue
+
+        if s.startswith("**", i):
+            end = s.find("**", i + 2)
+            if end == -1:
+                out.append(html.escape(s[i:]))
+                break
+            out.append(f"<b>{html.escape(s[i + 2:end])}</b>")
+            i = end + 2
+            continue
+
+        # Fallback (shouldn't happen, but avoid infinite loops).
+        out.append(html.escape(s[i]))
+        i += 1
+
+    return "".join(out)
+
+
+def _report_markdown_to_telegram_html(report_md: str) -> str:
+    """
+    Convert our daily report markdown into Telegram-compatible HTML.
+    Telegram HTML supports only a subset of tags (e.g. <b>, <i>, <code>, <pre>).
+    """
+    lines_out: list[str] = []
+    for raw in (report_md or "").splitlines():
+        line = (raw or "").rstrip()
+        if not line:
+            lines_out.append("")
+            continue
+
+        if line.startswith("## "):
+            title = line[3:].strip()
+            lines_out.append(f"🧾 <b>{html.escape(title)}</b>")
+            continue
+
+        if line.startswith("### "):
+            title = line[4:].strip()
+            emoji = "📝"
+            if title.lower().startswith("spends"):
+                emoji = "💸"
+            elif title.lower().startswith("earnings"):
+                emoji = "💰"
+            lines_out.append(f"{emoji} <b>{html.escape(title)}</b>")
+            continue
+
+        prefix = ""
+        content = line
+        if content.startswith("- "):
+            prefix = "• "
+            content = content[2:]
+        elif content.startswith("  - "):
+            prefix = "  ◦ "
+            content = content[4:]
+
+        lines_out.append(prefix + _render_inline_md_to_telegram_html(content))
+
+    # Avoid leading/trailing whitespace-only noise.
+    return "\n".join(lines_out).strip() or "(empty report)"
+
+
+def _telegram_send_message(bot_token: str, chat_id: int, text: str, *, parse_mode: str | None = None) -> None:
+    # Telegram hard-limit is 4096 chars per message.
+    chunks = _split_telegram_message(text, max_len=3900)
     for chunk in chunks:
+        body: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": chunk,
+            "disable_web_page_preview": True,
+        }
+        if parse_mode:
+            body["parse_mode"] = parse_mode
         _http_json(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
             method="POST",
-            body={
-                "chat_id": chat_id,
-                "text": chunk,
-                "disable_web_page_preview": True,
-            },
+            body=body,
         )
 
 
@@ -545,7 +668,8 @@ def users_api(request):
             report_md = "Daily report is empty."
 
         try:
-            _telegram_send_message(bot_token, telegram_id_int, report_md)
+            pretty_html = _report_markdown_to_telegram_html(report_md)
+            _telegram_send_message(bot_token, telegram_id_int, pretty_html, parse_mode="HTML")
         except Exception as e:
             return _error("Failed to send Telegram message", 500, {"details": str(e)})
 
