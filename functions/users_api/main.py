@@ -1,6 +1,9 @@
 import json
 import os
 import logging
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+import secrets
 from typing import Any, Dict, Tuple
 
 import functions_framework
@@ -85,6 +88,74 @@ def _parse_json(request) -> Tuple[Dict[str, Any] | None, Response | None]:
         return None, _error("Invalid JSON body", 400)
 
 
+def _html_response(html: str, status: int = 200) -> Response:
+    resp = make_response(html, status)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+def _sha256_hex(s: str) -> str:
+    return sha256(s.encode("utf-8")).hexdigest()
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _http_json(url: str, *, method: str = "GET", headers: Dict[str, str] | None = None, body: Any | None = None) -> Any:
+    """
+    Minimal JSON HTTP client (stdlib only).
+    - body is JSON-encoded when provided
+    - returns parsed JSON on 2xx; raises ValueError otherwise
+    """
+    import urllib.error
+    import urllib.request
+
+    hdrs: Dict[str, str] = {"Accept": "application/json"}
+    if headers:
+        hdrs.update(headers)
+
+    data = None
+    if body is not None:
+        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        hdrs["Content-Type"] = "application/json; charset=utf-8"
+
+    req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            if not raw:
+                return None
+            return json.loads(raw)
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", errors="replace")
+        raise ValueError(f"HTTP {e.code} {url}: {raw}") from e
+
+
+def _telegram_send_message(bot_token: str, chat_id: int, text: str) -> None:
+    # Telegram hard-limit is 4096 chars per message.
+    max_len = 3900
+    t = text or ""
+    chunks: list[str] = []
+    while t:
+        chunks.append(t[:max_len])
+        t = t[max_len:]
+    if not chunks:
+        chunks = ["(empty report)"]
+
+    for chunk in chunks:
+        _http_json(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            method="POST",
+            body={
+                "chat_id": chat_id,
+                "text": chunk,
+                "disable_web_page_preview": True,
+            },
+        )
+
+
 @functions_framework.http
 def users_api(request):
     """
@@ -105,6 +176,81 @@ def users_api(request):
     path = request.path or "/"
     parts = [p for p in path.split("/") if p]
 
+    # Public Telegram callback endpoint (no auth): /telegram/connect?token=...&telegram_id=...
+    if parts and parts[0] == "telegram":
+        if len(parts) == 1:
+            return _json_response(
+                {
+                    "service": "users_api",
+                    "endpoints": ["GET /telegram/connect?token=...&telegram_id=..."],
+                }
+            )
+
+        if len(parts) == 2 and parts[1] == "connect":
+            if request.method != "GET":
+                return _error("Method not allowed", 405)
+
+            token = (request.args.get("token") or "").strip()
+            telegram_id_raw = (request.args.get("telegram_id") or "").strip()
+            if not token:
+                return _html_response("<h3>Missing token</h3>", 400)
+            try:
+                telegram_id = int(telegram_id_raw)
+            except Exception:
+                return _html_response("<h3>Invalid telegram_id</h3>", 400)
+
+            db = get_db()
+            users_ref = db.collection("users")
+            token_hash = _sha256_hex(token)
+
+            docs = list(users_ref.where("telegram_connect_token_hash", "==", token_hash).limit(1).stream())
+            if not docs:
+                return _html_response(
+                    "<h3>Invalid or expired link</h3><p>Please re-connect from the web interface.</p>",
+                    400,
+                )
+
+            user_doc = docs[0]
+            user_id = user_doc.id
+            data = user_doc.to_dict() or {}
+            expires_at = data.get("telegram_connect_expires_at")
+            try:
+                if expires_at and hasattr(expires_at, "timestamp"):
+                    if expires_at.timestamp() < _now_utc().timestamp():
+                        users_ref.document(user_id).update(
+                            {
+                                "telegram_connect_token_hash": None,
+                                "telegram_connect_expires_at": None,
+                                "updated_at": firestore.SERVER_TIMESTAMP,
+                            }
+                        )
+                        return _html_response(
+                            "<h3>Link expired</h3><p>Please re-connect from the web interface.</p>",
+                            400,
+                        )
+            except Exception:
+                return _html_response(
+                    "<h3>Invalid link</h3><p>Please re-connect from the web interface.</p>",
+                    400,
+                )
+
+            users_ref.document(user_id).update(
+                {
+                    "telegram_id": telegram_id,
+                    "daily_report": True,
+                    "telegram_connect_token_hash": None,
+                    "telegram_connect_expires_at": None,
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                }
+            )
+
+            return _html_response(
+                "<h3>Connected!</h3><p>Telegram reports are now enabled. You can disable them later in the web interface.</p>",
+                200,
+            )
+
+        return _error("Not found", 404)
+
     if not parts:
         return _json_response(
             {
@@ -115,6 +261,9 @@ def users_api(request):
                     "GET /users/{user_id}",
                     "PUT/PATCH /users/{user_id}",
                     "DELETE /users/{user_id}",
+                    "POST /users/{user_id}/telegram/connect/init",
+                    "POST /users/{user_id}/telegram/reports/daily/send",
+                    "GET /telegram/connect?token=...&telegram_id=...",
                 ],
             }
         )
@@ -167,6 +316,8 @@ def users_api(request):
                     "username": payload.username,
                     "mono_token": payload.mono_token,
                     "active": payload.active,
+                    "telegram_id": payload.telegram_id,
+                    "daily_report": payload.daily_report,
                     "created_at": now,
                     "updated_at": now,
                 }
@@ -232,6 +383,12 @@ def users_api(request):
                 if payload.active is None:
                     return _error("`active` cannot be null", 400)
                 updates["active"] = payload.active
+            if "telegram_id" in payload.model_fields_set:
+                updates["telegram_id"] = payload.telegram_id
+            if "daily_report" in payload.model_fields_set:
+                if payload.daily_report is None:
+                    return _error("`daily_report` cannot be null", 400)
+                updates["daily_report"] = payload.daily_report
             updates["updated_at"] = firestore.SERVER_TIMESTAMP
 
             if len(updates) == 1:  # only updated_at
@@ -259,6 +416,140 @@ def users_api(request):
             return _json_response({"deleted": True, "user_id": user_id})
 
         return _error("Method not allowed", 405)
+
+    # /users/{user_id}/telegram/connect/init
+    if len(parts) == 5 and parts[0] == "users" and parts[2] == "telegram" and parts[3] == "connect" and parts[4] == "init":
+        user_id = parts[1]
+        if request.method != "POST":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        doc_ref = users_ref.document(user_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            if uid == INTERNAL_UID:
+                return _error("User not found", 404)
+            return _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
+
+        bot_username = (os.getenv("TELEGRAM_BOT_USERNAME") or "").strip().lstrip("@")
+        if not bot_username:
+            return _error("Server misconfigured: TELEGRAM_BOT_USERNAME is not set", 500)
+
+        token = secrets.token_urlsafe(32)
+        token_hash = _sha256_hex(token)
+        expires_at = _now_utc() + timedelta(minutes=30)
+        doc_ref.update(
+            {
+                "telegram_connect_token_hash": token_hash,
+                "telegram_connect_expires_at": expires_at,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            }
+        )
+
+        bot_url = f"https://t.me/{bot_username}?start={token}"
+        return _json_response({"bot_url": bot_url, "expires_at": expires_at.isoformat()})
+
+    # /users/{user_id}/telegram/reports/daily/send
+    if (
+        len(parts) == 6
+        and parts[0] == "users"
+        and parts[2] == "telegram"
+        and parts[3] == "reports"
+        and parts[4] == "daily"
+        and parts[5] == "send"
+    ):
+        user_id = parts[1]
+        if request.method != "POST":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        bot_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
+        if not bot_token:
+            return _error("Server misconfigured: TELEGRAM_BOT_TOKEN is not set", 500)
+
+        report_api_url = (os.getenv("REPORT_API_URL") or "").strip()
+        if not report_api_url:
+            return _error("Server misconfigured: REPORT_API_URL is not set", 500)
+
+        internal_key = (os.getenv("INTERNAL_API_KEY") or "").strip()
+        if not internal_key:
+            return _error("Server misconfigured: INTERNAL_API_KEY is not set", 500)
+
+        doc_ref = users_ref.document(user_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            if uid == INTERNAL_UID:
+                return _error("User not found", 404)
+            return _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
+
+        user_data = doc.to_dict() or {}
+        telegram_id = user_data.get("telegram_id")
+        if telegram_id is None:
+            return _error(
+                "Telegram is not connected. Connect Telegram reports first.",
+                400,
+                {"code": "TELEGRAM_NOT_CONNECTED"},
+            )
+        try:
+            telegram_id_int = int(telegram_id)
+        except Exception:
+            return _error("Invalid telegram_id stored for user", 500)
+
+        if not bool(user_data.get("daily_report", False)):
+            return _error(
+                "Telegram reports are disabled. Enable them in Settings first.",
+                400,
+                {"code": "TELEGRAM_REPORTS_DISABLED"},
+            )
+
+        body, err = _parse_json(request)
+        if err:
+            return err
+        body = body or {}
+        date = (body.get("date") or "").strip() or None
+        tz = (body.get("tz") or "").strip() or None
+        llm = body.get("llm")
+
+        from urllib.parse import urlencode
+
+        qs: Dict[str, str] = {}
+        if date:
+            qs["date"] = date
+        if tz:
+            qs["tz"] = tz
+        if llm is False:
+            qs["llm"] = "0"
+        url = f"{report_api_url}/users/{user_id}/reports/daily"
+        if qs:
+            url = f"{url}?{urlencode(qs)}"
+
+        try:
+            report_payload = _http_json(url, method="GET", headers={"X-Internal-Api-Key": internal_key})
+        except Exception as e:
+            return _error("Failed to fetch daily report", 500, {"details": str(e)})
+
+        report_md = ""
+        if isinstance(report_payload, dict):
+            report_md = str(report_payload.get("report_markdown") or "")
+        if not report_md:
+            report_md = "Daily report is empty."
+
+        try:
+            _telegram_send_message(bot_token, telegram_id_int, report_md)
+        except Exception as e:
+            return _error("Failed to send Telegram message", 500, {"details": str(e)})
+
+        return _json_response({"sent": True})
 
     return _error("Not found", 404)
 

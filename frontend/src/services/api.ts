@@ -60,6 +60,8 @@ export interface UserProfile {
   username?: string;
   mono_token?: string;
   active: boolean;
+  telegram_id?: number | null;
+  daily_report?: boolean;
 }
 
 export interface Account {
@@ -158,6 +160,31 @@ export const updateUserProfile = async (userId: string, updates: Partial<UserPro
     body: JSON.stringify(updates),
   });
   return data.user as UserProfile;
+};
+
+export type TelegramConnectInit = { bot_url: string; expires_at?: string };
+
+export const initTelegramConnect = async (userId: string): Promise<TelegramConnectInit> => {
+  return (await apiFetchJson(`${USERS_API_URL}/users/${userId}/telegram/connect/init`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })) as TelegramConnectInit;
+};
+
+export const sendDailyReportToTelegram = async (
+  userId: string,
+  opts?: { date?: string; tz?: string; llm?: boolean }
+): Promise<{ sent: boolean }> => {
+  return (await apiFetchJson(`${USERS_API_URL}/users/${userId}/telegram/reports/daily/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      date: opts?.date,
+      tz: opts?.tz,
+      llm: opts?.llm,
+    }),
+  })) as { sent: boolean };
 };
 
 export const fetchAccounts = async (userId: string): Promise<Account[]> => {

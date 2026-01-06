@@ -10,6 +10,12 @@ sync_transactions_function_name = "sync-transactions"
 report_function_name = "report-api"
 report_timezone      = "Europe/Kyiv"
 
+# Telegram bot + Telegram reports
+telegram_bot_function_name = "telegram-bot"
+telegram_bot_username      = "your_bot_username" # without @
+# telegram_bot_token         = "123456:ABC..."    # keep in tfvars (NOT in git)
+# telegram_webhook_secret    = "optional-secret"  # keep in tfvars (NOT in git)
+
 # Must be globally unique
 bucket_name = "your-gcp-project-id-functions-src"
 

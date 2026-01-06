@@ -129,6 +129,44 @@ variable "report_timezone" {
   default     = "Europe/Kyiv"
 }
 
+variable "telegram_bot_function_name" {
+  type        = string
+  description = "Cloud Function name (telegram_bot)."
+  default     = "telegram-bot"
+}
+
+variable "telegram_bot_entry_point" {
+  type        = string
+  description = "Python function entry point (telegram_bot)."
+  default     = "telegram_bot"
+}
+
+variable "telegram_bot_source_dir" {
+  type        = string
+  description = "Directory containing the function source + requirements.txt (telegram_bot)."
+  default     = "../functions/telegram_bot"
+}
+
+variable "telegram_bot_token" {
+  type        = string
+  description = "Telegram bot token (TELEGRAM_BOT_TOKEN)."
+  sensitive   = true
+  default     = ""
+}
+
+variable "telegram_bot_username" {
+  type        = string
+  description = "Telegram bot username without @ (TELEGRAM_BOT_USERNAME)."
+  default     = ""
+}
+
+variable "telegram_webhook_secret" {
+  type        = string
+  description = "Optional Telegram webhook secret token (X-Telegram-Bot-Api-Secret-Token)."
+  sensitive   = true
+  default     = ""
+}
+
 variable "gemini_api_key" {
   type        = string
   description = "Gemini API key (stored in Secret Manager and injected into report_api as GEMINI_API_KEY)."

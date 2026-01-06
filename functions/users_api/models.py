@@ -8,6 +8,9 @@ class UserCreate(BaseModel):
     mono_token: Optional[str] = None
     username: Optional[str] = None
     active: bool = True
+    # Telegram integration
+    telegram_id: Optional[int] = None
+    daily_report: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -15,5 +18,8 @@ class UserUpdate(BaseModel):
     mono_token: Optional[str] = None
     username: Optional[str] = None
     active: Optional[bool] = None
+    # Telegram integration
+    telegram_id: Optional[int] = None
+    daily_report: Optional[bool] = None
 
 

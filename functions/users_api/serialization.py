@@ -18,6 +18,8 @@ def user_doc_to_dict(doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         "username": data.get("username"),
         "mono_token": data.get("mono_token"),
         "active": data.get("active", True),
+        "telegram_id": data.get("telegram_id"),
+        "daily_report": data.get("daily_report", False),
         "created_at": _dt_to_iso(data.get("created_at")),
         "updated_at": _dt_to_iso(data.get("updated_at")),
     }

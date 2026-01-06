@@ -8,6 +8,8 @@
 - **Users API**: `http://localhost:8081`
 - **Accounts API**: `http://localhost:8082`
 - **Transactions API**: `http://localhost:8083`
+- **Report API**: `http://localhost:8086`
+- **Telegram Bot (polling in local dev)**: `http://localhost:8087` (container is running polling; port is for optional webhook via tunnel)
 
 ### Running locally
 
@@ -22,6 +24,25 @@ Or manually via docker-compose:
 ```bash
 docker compose up --build
 ```
+
+### Telegram reports (local dev)
+
+Add these to your local `.env` (do not commit secrets):
+- `TELEGRAM_BOT_USERNAME` (without `@`)
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_WEBHOOK_SECRET` (optional; validates `X-Telegram-Bot-Api-Secret-Token`)
+
+Local behavior:
+- **`make run` starts Telegram bot in polling mode automatically** (no extra steps).
+  - It also sets `TELEGRAM_POLLING_DELETE_WEBHOOK=1` in docker-compose so polling works even if your bot had a webhook set.
+  - Tip: use a separate Telegram bot token for local dev if you don’t want local polling to affect your production webhook.
+  - Note: Telegram inline keyboard URL buttons reject `localhost` URLs, so local dev uses a callback button and the bot calls the connect endpoint itself.
+
+```bash
+make run
+```
+
+- **Webhook mode** (optional): requires a public HTTPS URL (e.g. tunnel) that forwards to `http://localhost:8087`.
 
 ### Frontend Development
 

@@ -3,6 +3,7 @@
 This deploys:
 - `functions/users_api` as `users-api`
 - `functions/accounts_api` as `accounts-api`
+- `functions/telegram_bot` as `telegram-bot` (Telegram webhook handler)
 
 Both are **Cloud Functions Gen2** (HTTP) and have Firestore access.
 
@@ -52,6 +53,20 @@ terraform apply
 ```
 
 Terraform will output `users_api_url`, `accounts_api_url`, and `sync_worker_scheduler_job_name` (plus other service URLs).
+
+### Telegram bot webhook setup
+
+After `terraform apply`, use the output `telegram_bot_url` to configure your bot webhook:
+
+```bash
+curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -d "url=${TELEGRAM_BOT_URL}" \
+  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
+```
+
+Notes:
+- `TELEGRAM_BOT_URL` should be the Terraform output `telegram_bot_url`
+- `TELEGRAM_WEBHOOK_SECRET` is optional (must match `telegram_webhook_secret` in `terraform.tfvars` if set)
 
 ### Update / redeploy
 

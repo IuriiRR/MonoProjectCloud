@@ -24,6 +24,8 @@ services:
       - FIRESTORE_PROJECT_ID=demo-monobank
       - FIREBASE_AUTH_EMULATOR_HOST=firestore:9099
       - INTERNAL_API_KEY=dev-internal-key
+      # Telegram reports integration
+      - REPORT_API_URL=http://report_api:8086
     env_file:
       - .env
     depends_on:
@@ -81,6 +83,23 @@ services:
       - firestore
     ports:
       - "8086:8086"
+
+  telegram_bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.telegram_bot
+    # Local dev: Telegram can't reach localhost webhooks, so run polling by default.
+    command: [ "python", "polling.py" ]
+    environment:
+      - USERS_API_URL=http://users_api:8081
+      # Ensures polling works even if this bot previously had a webhook configured.
+      - TELEGRAM_POLLING_DELETE_WEBHOOK=1
+    env_file:
+      - .env
+    depends_on:
+      - users_api
+    ports:
+      - "8087:8087"
 
   sync_worker:
     build:
@@ -141,4 +160,5 @@ services:
       - accounts_api
       - transactions_api
       - report_api
+      - telegram_bot
       - firestore

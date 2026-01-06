@@ -184,6 +184,18 @@ resource "google_storage_bucket_object" "report_api_src" {
   source = data.archive_file.report_api_zip.output_path
 }
 
+data "archive_file" "telegram_bot_zip" {
+  type        = "zip"
+  source_dir  = var.telegram_bot_source_dir
+  output_path = "${path.module}/.build/telegram_bot.zip"
+}
+
+resource "google_storage_bucket_object" "telegram_bot_src" {
+  name   = "telegram_bot/${data.archive_file.telegram_bot_zip.output_sha}.zip"
+  bucket = google_storage_bucket.functions_src.name
+  source = data.archive_file.telegram_bot_zip.output_path
+}
+
 resource "google_service_account" "users_api" {
   account_id   = "users-api-sa"
   display_name = "users-api Cloud Function service account"
@@ -212,6 +224,11 @@ resource "google_service_account" "sync_transactions" {
 resource "google_service_account" "report_api" {
   account_id   = "report-api-sa"
   display_name = "report-api Cloud Function service account"
+}
+
+resource "google_service_account" "telegram_bot" {
+  account_id   = "telegram-bot-sa"
+  display_name = "telegram-bot Cloud Function service account"
 }
 
 resource "google_project_iam_member" "users_api_firestore_access" {
@@ -299,11 +316,14 @@ resource "google_cloudfunctions2_function" "users_api" {
     service_account_email = google_service_account.users_api.email
 
     environment_variables = {
-      FIRESTORE_PROJECT_ID = var.project_id
-      AUTH_MODE            = var.auth_mode
-      INTERNAL_API_KEY     = var.internal_api_key
-      SENTRY_DSN           = var.sentry_dsn
-      DISABLE_SENTRY       = var.sentry_disabled ? "1" : "0"
+      FIRESTORE_PROJECT_ID  = var.project_id
+      AUTH_MODE             = var.auth_mode
+      INTERNAL_API_KEY      = var.internal_api_key
+      REPORT_API_URL        = google_cloudfunctions2_function.report_api.service_config[0].uri
+      TELEGRAM_BOT_USERNAME = var.telegram_bot_username
+      TELEGRAM_BOT_TOKEN    = var.telegram_bot_token
+      SENTRY_DSN            = var.sentry_dsn
+      DISABLE_SENTRY        = var.sentry_disabled ? "1" : "0"
     }
   }
 }
@@ -421,6 +441,42 @@ resource "google_cloudfunctions2_function" "report_api" {
     google_storage_bucket_object.report_api_src,
     google_project_iam_member.report_api_firestore_access,
     google_secret_manager_secret_iam_member.report_api_secret_access,
+  ]
+}
+
+resource "google_cloudfunctions2_function" "telegram_bot" {
+  name     = var.telegram_bot_function_name
+  location = var.region
+
+  build_config {
+    runtime     = var.runtime
+    entry_point = var.telegram_bot_entry_point
+
+    source {
+      storage_source {
+        bucket = google_storage_bucket.functions_src.name
+        object = google_storage_bucket_object.telegram_bot_src.name
+      }
+    }
+  }
+
+  service_config {
+    available_memory      = "256M"
+    timeout_seconds       = 60
+    max_instance_count    = 3
+    ingress_settings      = "ALLOW_ALL"
+    service_account_email = google_service_account.telegram_bot.email
+
+    environment_variables = {
+      TELEGRAM_BOT_TOKEN      = var.telegram_bot_token
+      TELEGRAM_WEBHOOK_SECRET = var.telegram_webhook_secret
+      USERS_API_URL           = google_cloudfunctions2_function.users_api.service_config[0].uri
+    }
+  }
+
+  depends_on = [
+    google_storage_bucket_object.telegram_bot_src,
+    google_cloudfunctions2_function.users_api,
   ]
 }
 
@@ -572,6 +628,13 @@ resource "google_cloud_run_service_iam_member" "sync_worker_invoker" {
 resource "google_cloud_run_service_iam_member" "sync_transactions_invoker" {
   location = google_cloudfunctions2_function.sync_transactions.location
   service  = google_cloudfunctions2_function.sync_transactions.service_config[0].service
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+resource "google_cloud_run_service_iam_member" "telegram_bot_invoker" {
+  location = google_cloudfunctions2_function.telegram_bot.location
+  service  = google_cloudfunctions2_function.telegram_bot.service_config[0].service
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
