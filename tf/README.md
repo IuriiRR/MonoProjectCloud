@@ -55,6 +55,14 @@ terraform apply
 
 Terraform will output `users_api_url`, `accounts_api_url`, `sync_worker_scheduler_job_name`, and `daily_reports_scheduler_job_name` (plus other service URLs).
 
+### Firestore collections used by the app
+
+- **`users`**: user profiles (including `family_members: string[]`)
+- **`users/{user_id}/family_requests/{requester_id}`**: pending family join requests
+- **`invitations/{code}`**: short-lived invite codes (field `expires_at`)
+
+Terraform configures **Firestore TTL** on `invitations.expires_at` so expired invite-code documents are cleaned up automatically.
+
 ### Telegram bot webhook setup
 
 After `terraform apply`, use the output `telegram_bot_url` to configure your bot webhook:

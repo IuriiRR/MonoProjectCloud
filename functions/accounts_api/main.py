@@ -93,7 +93,7 @@ def _require_user(db, user_id: str, *, is_internal: bool):
         if is_internal:
             return None, _error("User not found", 404)
         return None, _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
-    return user_ref, None
+    return user_doc, None
 
 
 @functions_framework.http
@@ -142,13 +142,31 @@ def accounts_api(request):
     if auth_err:
         return _json_response(auth_err, status=auth_status or 401)
     is_internal = uid == INTERNAL_UID
-    if not is_internal and uid != user_id:
-        return _error("Forbidden", 403, {"code": "FORBIDDEN"})
 
     db = get_db()
-    _, user_err = _require_user(db, user_id, is_internal=is_internal)
-    if user_err:
-        return user_err
+    if not is_internal and uid != user_id:
+        # Do not leak whether the target user exists: for non-owner access,
+        # treat missing user as forbidden.
+        user_doc = db.collection("users").document(user_id).get()
+        if not user_doc.exists:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        # Check family
+        user_data = user_doc.to_dict() or {}
+        family_members = user_data.get("family_members") or []
+        if uid not in family_members:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        if request.method != "GET":
+            return _error(
+                "Forbidden: Family members have read-only access",
+                403,
+                {"code": "FORBIDDEN_READ_ONLY"},
+            )
+    else:
+        user_doc, user_err = _require_user(db, user_id, is_internal=is_internal)
+        if user_err:
+            return user_err
 
     accounts_ref = db.collection("users").document(user_id).collection("accounts")
 

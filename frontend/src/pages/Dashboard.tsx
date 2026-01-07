@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { fetchAccountsCached, fetchTransactions, Account, Transaction, updateAccount } from '../services/api';
+import { fetchAccountsCached, fetchTransactions, Account, Transaction, updateAccount, fetchFamilyMembers, FamilyMemberInfo } from '../services/api';
 import { ChevronDown, LogOut, RefreshCcw, Settings as SettingsIcon, BarChart3, WalletCards, PiggyBank, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import FamilyMemberSelector from '../components/FamilyMemberSelector';
 
 interface DashboardProps {
   user: User;
@@ -19,23 +20,43 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<AccountsTab>('jars');
   const [savingBudget, setSavingBudget] = useState(false);
+  
+  // Family state
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberInfo[]>([]);
+  const [selectedFamilyUserIds, setSelectedFamilyUserIds] = useState<string[]>([]);
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadAccounts({ forceRefresh: false });
+    // Load family members list (for checkbox selection)
+    fetchFamilyMembers(user.uid)
+      .then((members) => setFamilyMembers(members || []))
+      .catch(console.error);
   }, [user.uid]);
+
+  useEffect(() => {
+    loadAccounts({ forceRefresh: false });
+  }, [user.uid, selectedFamilyUserIds.join(','), familyMembers.length]);
 
   useEffect(() => {
     if (selectedAccountId) {
       loadTransactions(selectedAccountId);
     }
-  }, [selectedAccountId, user.uid]);
+  }, [selectedAccountId, user.uid, accounts]); // Added accounts dependency to find ownerId
 
   const loadAccounts = async (opts?: { forceRefresh?: boolean }) => {
     try {
       setLoading(true);
-      const data = await fetchAccountsCached(user.uid, { forceRefresh: Boolean(opts?.forceRefresh) });
-      setAccounts(data);
+      const userIds = [user.uid, ...selectedFamilyUserIds];
+      
+      const promises = userIds.map(async (uid) => {
+          const accs = await fetchAccountsCached(uid, { forceRefresh: Boolean(opts?.forceRefresh) });
+          return accs.map(a => ({ ...a, ownerId: uid }));
+      });
+      
+      const results = await Promise.all(promises);
+      const allAccounts = results.flat();
+      setAccounts(allAccounts);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -67,7 +88,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
   const loadTransactions = async (accountId: string) => {
     try {
-      const data = await fetchTransactions(user.uid, accountId);
+      const account = accounts.find(a => a.id === accountId);
+      const ownerId = account?.ownerId || user.uid;
+      const data = await fetchTransactions(ownerId, accountId);
       setTransactions(data);
     } catch (err: any) {
       setError(err.message);
@@ -78,14 +101,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
   const selectedIsBudget = Boolean(selectedAccount?.is_budget);
+  // Only owner can toggle budget
+  const isOwner = selectedAccount?.ownerId === user.uid || !selectedAccount?.ownerId;
 
   const handleToggleBudget = async () => {
     if (!selectedAccount || selectedAccount.type !== 'jar') return;
+    if (!isOwner) return;
+
     setSavingBudget(true);
     setError('');
     try {
       const updated = await updateAccount(user.uid, selectedAccount.id, { is_budget: !selectedIsBudget });
-      setAccounts(prev => prev.map(a => (a.id === updated.id ? { ...a, ...updated } : a)));
+      // updated account doesn't have ownerId from API, preserve it
+      setAccounts(prev => prev.map(a => (a.id === updated.id ? { ...a, ...updated, ownerId: selectedAccount.ownerId } : a)));
     } catch (err: any) {
       setError(err.message || 'Failed to update budget flag');
     } finally {
@@ -177,9 +205,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
         {/* Account Selection Section */}
         <section className="glass-card p-8">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              {activeTab === 'jars' ? 'Select Jar' : 'Select Card'}
-            </label>
+            <div className="flex items-center gap-4">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                {activeTab === 'jars' ? 'Select Jar' : 'Select Card'}
+              </label>
+              {familyMembers.length > 0 && (
+                <FamilyMemberSelector
+                  members={familyMembers}
+                  selectedUserIds={selectedFamilyUserIds}
+                  onChangeSelectedUserIds={setSelectedFamilyUserIds}
+                  compact
+                />
+              )}
+            </div>
             <button
               onClick={() => loadAccounts({ forceRefresh: true })}
               className="flex items-center text-xs font-semibold uppercase tracking-wider text-zinc-500 hover:text-white transition-colors"
@@ -202,7 +240,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               ) : (
                 visibleAccounts.map(acc => (
                   <option key={acc.id} value={acc.id} className="bg-zinc-950">
-                    {acc.title || 'Untitled'}{acc.type === 'jar' && acc.is_budget ? ' • Budget' : ''} - {(acc.balance / 100).toFixed(2)}
+                    {acc.title || 'Untitled'}{acc.type === 'jar' && acc.is_budget ? ' • Budget' : ''} 
+                    {acc.ownerId && acc.ownerId !== user.uid ? ` (${acc.ownerId.slice(0,4)}..)` : ''} 
+                    {' - '}{(acc.balance / 100).toFixed(2)}
                   </option>
                 ))
               )}
@@ -217,15 +257,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
               <div>
                 <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">Account Details</p>
                 <p className="text-xl font-bold mt-1">{selectedAccount.title || 'Main Account'}</p>
-                <p className="text-sm text-zinc-400 mt-0.5">{selectedAccount.type} • {selectedAccount.id}</p>
+                <p className="text-sm text-zinc-400 mt-0.5">
+                    {selectedAccount.type} • {selectedAccount.id}
+                    {!isOwner && <span className="ml-2 text-zinc-500 text-xs border border-zinc-700 px-1 rounded">Read-only</span>}
+                </p>
                 {selectedAccount.type === 'jar' ? (
                   <div className="mt-4 flex items-center gap-3">
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <label className={`flex items-center gap-3 select-none ${isOwner ? 'cursor-pointer' : 'cursor-default opacity-50'}`}>
                       <input
                         type="checkbox"
                         checked={selectedIsBudget}
                         onChange={handleToggleBudget}
-                        disabled={savingBudget}
+                        disabled={savingBudget || !isOwner}
                         className="h-4 w-4 accent-white disabled:opacity-50"
                         aria-label="Mark jar as budget"
                       />
@@ -307,4 +350,3 @@ const Dashboard: React.FC<DashboardProps> = ({ user }) => {
 };
 
 export default Dashboard;
-

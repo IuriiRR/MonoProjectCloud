@@ -24,6 +24,12 @@ resource "google_project_service" "firebase" {
   disable_on_destroy = false
 }
 
+resource "google_project_service" "firestore" {
+  project            = var.project_id
+  service            = "firestore.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_project_service" "hosting" {
   provider           = google-beta
   project            = var.project_id
@@ -53,7 +59,21 @@ resource "google_project_service" "secretmanager" {
 resource "google_firebase_project" "default" {
   provider   = google-beta
   project    = var.project_id
-  depends_on = [google_project_service.firebase]
+  depends_on = [google_project_service.firebase, google_project_service.firestore]
+}
+
+# Firestore TTL: auto-delete expired invite codes.
+# Collection: invitations/{code}
+# Field: expires_at (timestamp)
+resource "google_firestore_field" "invitations_expires_at_ttl" {
+  project    = var.project_id
+  database   = "(default)"
+  collection = "invitations"
+  field      = "expires_at"
+
+  ttl_config {}
+
+  depends_on = [google_project_service.firestore]
 }
 
 # Firebase Web App for the frontend

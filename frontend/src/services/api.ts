@@ -62,6 +62,20 @@ export interface UserProfile {
   active: boolean;
   telegram_id?: number | null;
   daily_report?: boolean;
+  family_members?: string[];
+}
+
+export interface FamilyRequest {
+  requester_id: string;
+  requester_name?: string;
+  status: string;
+  created_at?: any;
+}
+
+export interface FamilyMemberInfo {
+  user_id: string;
+  username?: string | null;
+  active?: boolean | null;
 }
 
 export interface Account {
@@ -74,6 +88,7 @@ export interface Account {
   is_active?: boolean;
   goal?: number | null;
   invested?: number;
+  ownerId?: string;
 }
 
 export interface Transaction {
@@ -139,9 +154,9 @@ export const fetchUserProfile = async (userId: string): Promise<UserProfile> => 
 export const createUserProfile = async (userId: string, username?: string): Promise<UserProfile> => {
   try {
     const data = await apiFetchJson(`${USERS_API_URL}/users`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, username }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, username }),
     });
     return data.user as UserProfile;
   } catch (e: any) {
@@ -248,9 +263,9 @@ export const fetchAllUserTransactions = async (userId: string): Promise<Transact
   return data.transactions as Transaction[];
 };
 
-export const fetchBalanceChartData = async (userId: string): Promise<Record<string, {time: number, balance: number}[]>> => {
+export const fetchBalanceChartData = async (userId: string): Promise<Record<string, { time: number, balance: number }[]>> => {
   const data = await apiFetchJson(`${TRANSACTIONS_API_URL}/users/${userId}/charts/balance`);
-  return data.charts as Record<string, {time: number, balance: number}[]>;
+  return data.charts as Record<string, { time: number, balance: number }[]>;
 };
 
 export interface MonthlySummary {
@@ -276,4 +291,42 @@ export const fetchDailyReport = async (
   if (opts?.llm === false) qs.set('llm', '0');
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return (await apiFetchJson(`${REPORT_API_URL}/users/${userId}/reports/daily${suffix}`)) as DailyReportResponse;
+};
+
+export const generateFamilyInviteCode = async (userId: string): Promise<{ code: string; expires_at: string }> => {
+  return await apiFetchJson(`${USERS_API_URL}/users/${userId}/family/invite`, {
+    method: 'POST',
+  });
+};
+
+export const joinFamily = async (userId: string, code: string): Promise<{ status: string; target_user_id: string }> => {
+  return await apiFetchJson(`${USERS_API_URL}/users/${userId}/family/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+};
+
+export const fetchFamilyRequests = async (userId: string): Promise<FamilyRequest[]> => {
+  const data = await apiFetchJson(`${USERS_API_URL}/users/${userId}/family/requests`);
+  return data.requests as FamilyRequest[];
+};
+
+export const respondToFamilyRequest = async (userId: string, requesterId: string, action: 'accept' | 'reject'): Promise<void> => {
+  await apiFetchJson(`${USERS_API_URL}/users/${userId}/family/requests/${requesterId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+};
+
+export const removeFamilyMember = async (userId: string, memberId: string): Promise<void> => {
+  await apiFetchJson(`${USERS_API_URL}/users/${userId}/family/members/${memberId}`, {
+    method: 'DELETE',
+  });
+};
+
+export const fetchFamilyMembers = async (userId: string): Promise<FamilyMemberInfo[]> => {
+  const data = await apiFetchJson(`${USERS_API_URL}/users/${userId}/family/members`);
+  return (data.members || []) as FamilyMemberInfo[];
 };

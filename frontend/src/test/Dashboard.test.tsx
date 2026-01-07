@@ -8,6 +8,7 @@ vi.mock('../services/api', () => {
     fetchAccountsCached: vi.fn(),
     fetchTransactions: vi.fn(),
     updateAccount: vi.fn(),
+    fetchFamilyMembers: vi.fn(),
   };
 });
 
@@ -16,6 +17,7 @@ const mockedApi = api as unknown as {
   fetchAccountsCached: ReturnType<typeof vi.fn>;
   fetchTransactions: ReturnType<typeof vi.fn>;
   updateAccount: ReturnType<typeof vi.fn>;
+  fetchFamilyMembers: ReturnType<typeof vi.fn>;
 };
 
 describe('Dashboard', () => {
@@ -24,6 +26,7 @@ describe('Dashboard', () => {
     mockedApi.updateAccount.mockImplementation(async (_userId: string, _accountId: string, updates: any) => {
       return { id: 'jar-1', type: 'jar', currency: { code: 980 }, balance: 1000, title: 'Jar One', ...updates };
     });
+    mockedApi.fetchFamilyMembers?.mockResolvedValue([]);
   });
 
   it('splits jars and cards into tabs (single accounts fetch) and shows budget toggle for jars only', async () => {

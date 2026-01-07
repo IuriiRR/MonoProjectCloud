@@ -128,6 +128,59 @@ def test_auth_forbidden_when_uid_mismatch(app, monkeypatch):
     assert _json(resp)["code"] == "FORBIDDEN"
 
 
+def test_family_invite_flow(app, monkeypatch):
+    import functions.users_api.main as users_main
+    
+    # 1. Create User A and User B
+    with app.test_request_context("/users", method="POST", json={"user_id": "uA"}):
+        users_api(flask_request)
+    with app.test_request_context("/users", method="POST", json={"user_id": "uB"}):
+        users_api(flask_request)
 
+    # 2. User A generates invite
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("uA", None, None))
+    with app.test_request_context("/users/uA/family/invite", method="POST"):
+        resp = users_api(flask_request)
+    assert resp.status_code == 200
+    code = _json(resp)["code"]
 
+    # 3. User B joins using code
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("uB", None, None))
+    with app.test_request_context("/users/uB/family/join", method="POST", json={"code": code}):
+        resp = users_api(flask_request)
+    assert resp.status_code == 200
+    assert _json(resp)["status"] == "request_sent"
 
+    # 4. User A checks requests
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("uA", None, None))
+    with app.test_request_context("/users/uA/family/requests", method="GET"):
+        resp = users_api(flask_request)
+    assert resp.status_code == 200
+    reqs = _json(resp)["requests"]
+    assert len(reqs) == 1
+    assert reqs[0]["requester_id"] == "uB"
+
+    # 5. User A accepts
+    with app.test_request_context(f"/users/uA/family/requests/uB", method="POST", json={"action": "accept"}):
+        resp = users_api(flask_request)
+    assert resp.status_code == 200
+
+    # 6. Verify family_members in profile
+    with app.test_request_context("/users/uA", method="GET"):
+        resp = users_api(flask_request)
+    assert "uB" in _json(resp)["user"]["family_members"]
+
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("uB", None, None))
+    with app.test_request_context("/users/uB", method="GET"):
+        resp = users_api(flask_request)
+    assert "uA" in _json(resp)["user"]["family_members"]
+
+    # 7. Remove member
+    monkeypatch.setattr(users_main, "authenticate_request", lambda _req: ("uA", None, None))
+    with app.test_request_context("/users/uA/family/members/uB", method="DELETE"):
+        resp = users_api(flask_request)
+    assert resp.status_code == 200
+
+    with app.test_request_context("/users/uA", method="GET"):
+        resp = users_api(flask_request)
+    assert "uB" not in _json(resp)["user"]["family_members"]

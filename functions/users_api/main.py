@@ -105,6 +105,17 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _unique_list(xs: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in xs:
+        if not x or x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
+
+
 def _compute_iso_date(*, tz_name: str, offset_days: int) -> Tuple[str, str]:
     """
     Returns: (YYYY-MM-DD, normalized_tz_name)
@@ -510,6 +521,11 @@ def users_api(request):
                     "DELETE /users/{user_id}",
                     "POST /users/{user_id}/telegram/connect/init",
                     "POST /users/{user_id}/telegram/reports/daily/send",
+                    "POST /users/{user_id}/family/invite",
+                    "POST /users/{user_id}/family/join",
+                    "GET /users/{user_id}/family/requests",
+                    "POST /users/{user_id}/family/requests/{requester_id}",
+                    "DELETE /users/{user_id}/family/members/{member_id}",
                     "GET /telegram/connect?token=...&telegram_id=...",
                     "POST /telegram/reports/daily/send_enabled",
                 ],
@@ -566,6 +582,7 @@ def users_api(request):
                     "active": payload.active,
                     "telegram_id": payload.telegram_id,
                     "daily_report": payload.daily_report,
+                    "family_members": _unique_list(list(payload.family_members or [])),
                     "created_at": now,
                     "updated_at": now,
                 }
@@ -792,6 +809,291 @@ def users_api(request):
             return _error("Failed to send Telegram message", 500, {"details": str(e)})
 
         return _json_response({"sent": True})
+
+    # /users/{user_id}/family/invite (Generate code)
+    if len(parts) == 4 and parts[0] == "users" and parts[2] == "family" and parts[3] == "invite":
+        user_id = parts[1]
+        if request.method != "POST":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        import string
+
+        # Generate a unique 6-digit code (avoid collisions).
+        expires_at = _now_utc() + timedelta(hours=1)
+        code = ""
+        for _ in range(20):
+            candidate = "".join(secrets.choice(string.digits) for _ in range(6))
+            inv_ref = db.collection("invitations").document(candidate)
+            if not inv_ref.get().exists:
+                inv_ref.set(
+                    {
+                        "user_id": user_id,
+                        "created_at": firestore.SERVER_TIMESTAMP,
+                        "expires_at": expires_at,
+                    }
+                )
+                code = candidate
+                break
+        if not code:
+            return _error("Failed to generate invite code, try again", 500)
+
+        return _json_response({"code": code, "expires_at": expires_at.isoformat()})
+
+    # /users/{user_id}/family/join (Send request)
+    if len(parts) == 4 and parts[0] == "users" and parts[2] == "family" and parts[3] == "join":
+        user_id = parts[1]  # The requester
+        if request.method != "POST":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        body, err = _parse_json(request)
+        if err:
+            return err
+        code = str(body.get("code") or "").strip()
+        if not code:
+            return _error("Missing code", 400)
+
+        inv_ref = db.collection("invitations").document(code)
+        inv_doc = inv_ref.get()
+        if not inv_doc.exists:
+            return _error("Invalid code", 404)
+
+        inv_data = inv_doc.to_dict() or {}
+        expires_at = inv_data.get("expires_at")
+        target_user_id = inv_data.get("user_id")
+
+        if not target_user_id:
+            return _error("Invalid code data", 500)
+
+        # Check expiry
+        try:
+            if expires_at and expires_at.timestamp() < _now_utc().timestamp():
+                return _error("Code expired", 400)
+        except Exception:
+            return _error("Invalid code expiry", 500)
+
+        if target_user_id == user_id:
+            return _error("Cannot invite yourself", 400)
+
+        # If already members, short-circuit.
+        target_doc = users_ref.document(target_user_id).get()
+        if target_doc.exists:
+            target_data = target_doc.to_dict() or {}
+            if user_id in (target_data.get("family_members") or []):
+                return _json_response({"status": "already_members", "target_user_id": target_user_id})
+
+        # If request already exists, short-circuit.
+        req_ref = users_ref.document(target_user_id).collection("family_requests").document(user_id)
+        if req_ref.get().exists:
+            return _json_response({"status": "already_requested", "target_user_id": target_user_id})
+
+        # Create request on target user
+        # users/{target}/family_requests/{requester}
+        req_ref.set(
+            {
+                "requester_id": user_id,
+                "status": "pending",
+                "created_at": firestore.SERVER_TIMESTAMP,
+            }
+        )
+
+        # Make invites single-use to reduce spam/replay risk.
+        try:
+            inv_ref.delete()
+        except Exception:
+            pass
+
+        return _json_response({"status": "request_sent", "target_user_id": target_user_id})
+
+    # /users/{user_id}/family/requests (List incoming)
+    if len(parts) == 4 and parts[0] == "users" and parts[2] == "family" and parts[3] == "requests":
+        user_id = parts[1]
+        if request.method != "GET":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        reqs_ref = users_ref.document(user_id).collection("family_requests")
+        docs = reqs_ref.where("status", "==", "pending").stream()
+        requests = []
+        for d in docs:
+            data = d.to_dict() or {}
+            # Enrich with requester username if possible?
+            r_uid = data.get("requester_id")
+            if r_uid:
+                r_doc = users_ref.document(r_uid).get()
+                if r_doc.exists:
+                    r_data = r_doc.to_dict()
+                    data["requester_name"] = r_data.get("username") or "Unknown"
+            # Ensure JSON-serializable timestamps (tests use FakeFirestore -> datetime).
+            created_at = data.get("created_at")
+            try:
+                if created_at is not None and hasattr(created_at, "isoformat"):
+                    data["created_at"] = created_at.isoformat()
+            except Exception:
+                data["created_at"] = None
+            requests.append(data)
+
+        return _json_response({"requests": requests})
+
+    # /users/{user_id}/family/requests/{requester_id} (Respond)
+    if (
+        len(parts) == 5
+        and parts[0] == "users"
+        and parts[2] == "family"
+        and parts[3] == "requests"
+    ):
+        user_id = parts[1]
+        requester_id = parts[4]
+        if request.method != "POST":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        body, err = _parse_json(request)
+        if err:
+            return err
+        action = str(body.get("action") or "").strip().lower()
+        if action not in ("accept", "reject"):
+            return _error("Invalid action", 400)
+
+        req_ref = (
+            users_ref.document(user_id).collection("family_requests").document(requester_id)
+        )
+        req_doc = req_ref.get()
+        if not req_doc.exists:
+            return _error("Request not found", 404)
+
+        if action == "reject":
+            req_ref.delete()
+            return _json_response({"status": "rejected"})
+
+        if action == "accept":
+            # Update both users' family_members lists (bidirectional).
+            user_ref = users_ref.document(user_id)
+            requester_ref = users_ref.document(requester_id)
+
+            user_doc = user_ref.get()
+            requester_doc = requester_ref.get()
+            if not user_doc.exists or not requester_doc.exists:
+                # Best-effort: remove the request if either side is missing.
+                req_ref.delete()
+                return _error("User not found", 404)
+
+            user_data = user_doc.to_dict() or {}
+            requester_data = requester_doc.to_dict() or {}
+
+            user_members = _unique_list(list(user_data.get("family_members") or []) + [requester_id])
+            requester_members = _unique_list(list(requester_data.get("family_members") or []) + [user_id])
+
+            batch = db.batch()
+            batch.update(user_ref, {"family_members": user_members, "updated_at": firestore.SERVER_TIMESTAMP})
+            batch.update(requester_ref, {"family_members": requester_members, "updated_at": firestore.SERVER_TIMESTAMP})
+            batch.delete(req_ref)
+            batch.commit()
+            return _json_response({"status": "accepted"})
+
+    # /users/{user_id}/family/members/{member_id} (Remove member)
+    if (
+        len(parts) == 5
+        and parts[0] == "users"
+        and parts[2] == "family"
+        and parts[3] == "members"
+    ):
+        user_id = parts[1]
+        member_id = parts[4]
+        if request.method != "DELETE":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        user_ref = users_ref.document(user_id)
+        member_ref = users_ref.document(member_id)
+
+        user_doc = user_ref.get()
+        member_doc = member_ref.get()
+        if not user_doc.exists:
+            return _error("User not found", 404)
+        if not member_doc.exists:
+            # Still remove from user's list if possible.
+            user_data = user_doc.to_dict() or {}
+            user_members = [m for m in (user_data.get("family_members") or []) if m != member_id]
+            user_ref.update({"family_members": _unique_list(list(user_members)), "updated_at": firestore.SERVER_TIMESTAMP})
+            return _json_response({"status": "removed"})
+
+        user_data = user_doc.to_dict() or {}
+        member_data = member_doc.to_dict() or {}
+
+        user_members = [m for m in (user_data.get("family_members") or []) if m != member_id]
+        member_members = [m for m in (member_data.get("family_members") or []) if m != user_id]
+
+        batch = db.batch()
+        batch.update(user_ref, {"family_members": _unique_list(list(user_members)), "updated_at": firestore.SERVER_TIMESTAMP})
+        batch.update(member_ref, {"family_members": _unique_list(list(member_members)), "updated_at": firestore.SERVER_TIMESTAMP})
+        batch.commit()
+
+        return _json_response({"status": "removed"})
+
+    # /users/{user_id}/family/members (List members + basic profile)
+    if len(parts) == 4 and parts[0] == "users" and parts[2] == "family" and parts[3] == "members":
+        user_id = parts[1]
+        if request.method != "GET":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID and uid != user_id:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        doc = users_ref.document(user_id).get()
+        if not doc.exists:
+            if uid == INTERNAL_UID:
+                return _error("User not found", 404)
+            return _error("User not found, please, register first", 403, {"code": "USER_NOT_FOUND"})
+
+        data = doc.to_dict() or {}
+        member_ids = list(data.get("family_members") or [])
+
+        members: list[dict[str, Any]] = []
+        for mid in member_ids:
+            mdoc = users_ref.document(str(mid)).get()
+            if not mdoc.exists:
+                members.append({"user_id": str(mid), "username": None, "active": None})
+                continue
+            mdata = mdoc.to_dict() or {}
+            members.append(
+                {
+                    "user_id": mdata.get("user_id") or mdoc.id,
+                    "username": mdata.get("username"),
+                    "active": mdata.get("active", True),
+                }
+            )
+
+        return _json_response({"members": members})
 
     return _error("Not found", 404)
 

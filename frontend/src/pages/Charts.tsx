@@ -3,7 +3,8 @@ import { ArrowLeft, BarChart3, Info } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Account, fetchAccountsCached, fetchBalanceChartData, fetchMonthlySummary, MonthlySummary } from '../services/api';
+import FamilyMemberSelector from '../components/FamilyMemberSelector';
+import { Account, FamilyMemberInfo, fetchAccountsCached, fetchBalanceChartData, fetchFamilyMembers, fetchMonthlySummary, MonthlySummary } from '../services/api';
 
 interface ChartsProps {
   user: User;
@@ -17,28 +18,61 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [budgetOnly, setBudgetOnly] = useState(false);
+
+  // Family state
+  const [familyMembers, setFamilyMembers] = useState<FamilyMemberInfo[]>([]);
+  const [selectedFamilyUserIds, setSelectedFamilyUserIds] = useState<string[]>([]);
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadData();
+    fetchFamilyMembers(user.uid)
+      .then((members) => setFamilyMembers(members || []))
+      .catch(console.error);
   }, [user.uid]);
+
+  useEffect(() => {
+    loadData();
+  }, [user.uid, selectedFamilyUserIds.join(','), familyMembers.length]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [accounts, data, summary] = await Promise.all([
-        fetchAccountsCached(user.uid),
-        fetchBalanceChartData(user.uid),
-        fetchMonthlySummary(user.uid)
-      ]);
+      const userIds = [user.uid, ...selectedFamilyUserIds];
 
-      const filteredJars = accounts.filter(acc => acc.type === 'jar');
+      const userPromises = userIds.map(async (uid) => {
+        const [accounts, data, summary] = await Promise.all([
+          fetchAccountsCached(uid),
+          fetchBalanceChartData(uid),
+          fetchMonthlySummary(uid)
+        ]);
+        return {
+          uid,
+          accounts: accounts.map(a => ({ ...a, ownerId: uid })),
+          data,
+          summary
+        };
+      });
+
+      const results = await Promise.all(userPromises);
+
+      // Merge results
+      const allAccounts = results.flatMap(r => r.accounts);
+      const allData: Record<string, any[]> = {};
+      const allSummary: Record<string, MonthlySummary[]> = {};
+
+      results.forEach(r => {
+        Object.assign(allData, r.data);
+        Object.assign(allSummary, r.summary);
+      });
+
+      const filteredJars = allAccounts.filter(acc => acc.type === 'jar');
       setJars(filteredJars);
-      setSummaryData(summary);
+      setSummaryData(allSummary);
 
       // Transform data for recharts
       const transformed: Record<string, any[]> = {};
-      Object.entries(data).forEach(([accId, points]) => {
+      Object.entries(allData).forEach(([accId, points]) => {
         transformed[accId] = points.map(p => ({
           time: p.time * 1000,
           balance: p.balance / 100,
@@ -98,9 +132,6 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
     if (!data || data.length === 0) return null;
 
     // Take last 6 months (data is usually sorted by backend, but let's ensure desc or asc logic)
-    // The chips are rendered by map, so order in array matters. Backend sends object?
-    // fetchMonthlySummary returns Record<string, MonthlySummary[]>.
-    // Assuming array is whatever order. Let's sort just in case.
     const sorted = [...data].sort((a, b) => b.month.localeCompare(a.month)); // Newest first
     const last6 = sorted.slice(0, 6);
 
@@ -141,21 +172,31 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
             <ArrowLeft size={18} className="mr-2 group-hover:-translate-x-1 transition-transform" />
             Back to Dashboard
           </button>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <h1 className="text-3xl font-bold flex items-center tracking-tight">
-              <BarChart3 className="mr-3 text-white" />
-              Jar Balance Trends
-            </h1>
-            <label className="flex items-center gap-3 cursor-pointer select-none self-start sm:self-auto">
-              <input
-                type="checkbox"
-                checked={budgetOnly}
-                onChange={(e) => setBudgetOnly(e.target.checked)}
-                className="h-4 w-4 accent-white"
-                aria-label="Show budget jars only"
+          <div className="flex flex-col gap-4 items-end">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <h1 className="text-3xl font-bold flex items-center tracking-tight">
+                <BarChart3 className="mr-3 text-white" />
+                Jar Balance Trends
+              </h1>
+              <label className="flex items-center gap-3 cursor-pointer select-none self-start sm:self-auto">
+                <input
+                  type="checkbox"
+                  checked={budgetOnly}
+                  onChange={(e) => setBudgetOnly(e.target.checked)}
+                  className="h-4 w-4 accent-white"
+                  aria-label="Show budget jars only"
+                />
+                <span className="text-sm text-zinc-300">Budget only</span>
+              </label>
+            </div>
+            {familyMembers.length > 0 && (
+              <FamilyMemberSelector
+                members={familyMembers}
+                selectedUserIds={selectedFamilyUserIds}
+                onChangeSelectedUserIds={setSelectedFamilyUserIds}
+                compact
               />
-              <span className="text-sm text-zinc-300">Budget only</span>
-            </label>
+            )}
           </div>
         </header>
 
@@ -180,6 +221,7 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
             {visibleJars.map(jar => {
               const currentHover = hoveredMonth?.jarId === jar.id ? hoveredMonth.summary : null;
               const averages = !currentHover && summaryData[jar.id] ? getAverageStats(jar.id) : null;
+              const isOwner = jar.ownerId === user.uid || !jar.ownerId;
 
               let activeRange = null;
               if (currentHover) {
@@ -201,7 +243,10 @@ const Charts: React.FC<ChartsProps> = ({ user }) => {
                           </span>
                         ) : null}
                       </div>
-                      <p className="text-sm text-zinc-500 mt-1 font-mono">{jar.id}</p>
+                      <p className="text-sm text-zinc-500 mt-1 font-mono">
+                        {jar.id}
+                        {!isOwner && <span className="ml-2 text-zinc-500 text-xs border border-zinc-700 px-1 rounded">Read-only</span>}
+                      </p>
                     </div>
                     <div className="sm:text-right">
                       <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">Current Balance</p>

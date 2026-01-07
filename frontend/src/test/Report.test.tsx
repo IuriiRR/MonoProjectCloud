@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
 import Report from '../pages/Report';
 
 vi.mock('../services/api', async () => {
@@ -24,7 +25,11 @@ describe('Report page', () => {
   });
 
   it('renders and loads report', async () => {
-    render(<Report user={{ uid: 'u1' } as any} />);
+    render(
+      <BrowserRouter>
+        <Report user={{ uid: 'u1' } as any} />
+      </BrowserRouter>
+    );
     expect(screen.getByText('Daily Report')).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText(/Daily transactions report/)).toBeInTheDocument();

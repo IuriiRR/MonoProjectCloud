@@ -8,6 +8,7 @@ vi.mock('../services/api', () => {
     fetchAccountsCached: vi.fn(),
     fetchBalanceChartData: vi.fn(),
     fetchMonthlySummary: vi.fn(),
+    fetchFamilyMembers: vi.fn(),
   };
 });
 
@@ -45,10 +46,12 @@ const mockedApi = api as unknown as {
   fetchAccountsCached: ReturnType<typeof vi.fn>;
   fetchBalanceChartData: ReturnType<typeof vi.fn>;
   fetchMonthlySummary: ReturnType<typeof vi.fn>;
+  fetchFamilyMembers: ReturnType<typeof vi.fn>;
 };
 
 describe('Charts', () => {
   it('filters out non-budget jars when Budget only is enabled', async () => {
+    mockedApi.fetchFamilyMembers?.mockResolvedValue([]);
     mockedApi.fetchAccountsCached.mockResolvedValue([
       { id: 'jar-budget', type: 'jar', currency: { code: 980 }, balance: 1000, title: 'Budget Jar', is_budget: true },
       { id: 'jar-nonbudget', type: 'jar', currency: { code: 980 }, balance: 2000, title: 'Regular Jar', is_budget: false },
@@ -78,6 +81,7 @@ describe('Charts', () => {
   });
 
   it('renders monthly summary for budget jars and shows tooltip on hover', async () => {
+    mockedApi.fetchFamilyMembers?.mockResolvedValue([]);
     mockedApi.fetchAccountsCached.mockResolvedValue([
       { id: 'jar-budget', type: 'jar', currency: { code: 980 }, balance: 1000, title: 'Budget Jar', is_budget: true },
     ]);
@@ -117,6 +121,7 @@ describe('Charts', () => {
   });
 
   it('selects month when hovering a transaction point (chart hover)', async () => {
+    mockedApi.fetchFamilyMembers?.mockResolvedValue([]);
     mockedApi.fetchAccountsCached.mockResolvedValue([
       { id: 'jar-budget', type: 'jar', currency: { code: 980 }, balance: 1000, title: 'Budget Jar', is_budget: true },
     ]);
@@ -155,6 +160,7 @@ describe('Charts', () => {
   });
 
   it('renders 6-month average when no month is hovered', async () => {
+    mockedApi.fetchFamilyMembers?.mockResolvedValue([]);
     mockedApi.fetchAccountsCached.mockResolvedValue([
       { id: 'jar-budget', type: 'jar', currency: { code: 980 }, balance: 1000, title: 'Budget Jar', is_budget: true },
     ]);
