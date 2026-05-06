@@ -36,8 +36,13 @@ def _get_updates(bot_token: str, offset: Optional[int]) -> Dict[str, Any]:
 def run_polling() -> None:
     bot_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "").strip()
     users_api_url = (os.getenv("USERS_API_PUBLIC_URL") or os.getenv("USERS_API_URL") or "").strip()
-    if not bot_token or not users_api_url:
-        raise SystemExit("Missing TELEGRAM_BOT_TOKEN or USERS_API_PUBLIC_URL/USERS_API_URL")
+    missing = []
+    if not bot_token:
+        missing.append("TELEGRAM_BOT_TOKEN")
+    if not users_api_url:
+        missing.append("USERS_API_PUBLIC_URL/USERS_API_URL")
+    if missing:
+        raise SystemExit(f"Missing required env var(s): {', '.join(missing)}")
 
     should_delete_webhook = (os.getenv("TELEGRAM_POLLING_DELETE_WEBHOOK") or "").strip().lower() in (
         "1",

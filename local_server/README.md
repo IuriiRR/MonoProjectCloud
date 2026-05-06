@@ -68,9 +68,17 @@ Use `local_server/.env.example` as the template.
 1. Copy env:
    - `cp local_server/.env.example local_server/.env`
    - Fill values (or symlink to `/etc/cloudapi/local_server.env`)
-2. Start services:
+2. Provision the service-account key for Docker:
+   - The compose file mounts `local_server/secrets/` into the container at `/etc/cloudapi:ro`.
+   - Place the GCP service-account JSON at `local_server/secrets/sa.json` (chmod `600`).
+   - Contents of `secrets/` are git-ignored.
+3. Start services:
    - `cd local_server`
    - `docker compose up -d --build`
+
+Note: `TELEGRAM_WEBHOOK_URL` is only required for failover (the unblocker re-points
+Telegram to the cloud webhook). If unset, the local server will still run; webhook
+ops are skipped gracefully.
 
 ## Verify
 

@@ -9,7 +9,7 @@ services:
       - ../functions:/workspace/functions:ro
       - ./src:/workspace/local_server/src:ro
       - ./tests:/workspace/local_server/tests:ro
-      - /etc/cloudapi:/etc/cloudapi:ro
+      - ./secrets:/etc/cloudapi:ro
     ports:
       - "9090:9090"
     command: ["python", "-m", "local_server.scheduler"]
@@ -22,5 +22,6 @@ services:
       - .env
     volumes:
       - ../functions:/workspace/functions:ro
-      - /etc/cloudapi:/etc/cloudapi:ro
+      - ./secrets:/etc/cloudapi:ro
     command: ["python", "/workspace/functions/telegram_bot/polling.py"]
+

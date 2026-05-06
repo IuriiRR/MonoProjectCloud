@@ -24,10 +24,14 @@ def _telegram_api(bot_token: str, method: str, body: Dict[str, Any]) -> Dict[str
 
 
 def _delete_webhook(settings: Settings) -> None:
+    if not settings.telegram_bot_token:
+        return
     _telegram_api(settings.telegram_bot_token, "deleteWebhook", {"drop_pending_updates": False})
 
 
 def _set_webhook(settings: Settings) -> None:
+    if not settings.telegram_bot_token or not settings.telegram_webhook_url:
+        return
     body: Dict[str, Any] = {"url": settings.telegram_webhook_url}
     if settings.telegram_webhook_secret:
         body["secret_token"] = settings.telegram_webhook_secret
@@ -51,18 +55,31 @@ def cede_to_local(gateway: SchedulerGateway, settings: Settings) -> None:
     gateway.push_job_forward(settings.cloud_unblocker_job, lead_seconds=settings.unblocker_lead_sec)
 
 
-def start_control_loop(gateway: SchedulerGateway, settings: Settings) -> Event:
-    stop_event = Event()
+def install_shutdown_handlers(
+    gateway: SchedulerGateway,
+    settings: Settings,
+    stop_event: Event,
+    on_shutdown=None,
+) -> None:
+    """Install SIGTERM/SIGINT handlers. MUST be called from the main thread."""
 
     def _handle_signal(_signum, _frame):
         try:
             unblock_cloud(gateway, settings)
         finally:
             stop_event.set()
+            if on_shutdown is not None:
+                try:
+                    on_shutdown()
+                except Exception as e:
+                    mark_error(f"on_shutdown failed: {e}")
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
+
+def start_control_loop(gateway: SchedulerGateway, settings: Settings, stop_event: Event) -> None:
+    """Run the heartbeat loop until stop_event is set. Safe to call from a thread."""
     cede_to_local(gateway, settings)
 
     while not stop_event.is_set():
@@ -72,5 +89,3 @@ def start_control_loop(gateway: SchedulerGateway, settings: Settings) -> Event:
         except Exception as e:
             mark_error(str(e))
         stop_event.wait(settings.heartbeat_interval_sec)
-
-    return stop_event
