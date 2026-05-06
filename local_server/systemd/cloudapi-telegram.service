@@ -1,5 +1,5 @@
 [Unit]
-Description=CloudApi local scheduler and failover controller
+Description=CloudApi Telegram polling worker
 After=network-online.target
 Wants=network-online.target
 
@@ -8,14 +8,12 @@ Type=simple
 # Matched to README: user ironcow, repo at ~/Projects/MonoProjectCloud. Edit if yours differs.
 User=ironcow
 Group=ironcow
-WorkingDirectory=/home/ironcow/Projects/MonoProjectCloud
+WorkingDirectory=/home/ironcow/Projects/MonoProjectCloud/functions/telegram_bot
 EnvironmentFile=/etc/cloudapi/local_server.env
-Environment=PYTHONPATH=/home/ironcow/Projects/MonoProjectCloud:/home/ironcow/Projects/MonoProjectCloud/local_server/src
-ExecStart=/home/ironcow/Projects/MonoProjectCloud/.venv/bin/python -m local_server.scheduler
+Environment=PYTHONPATH=/home/ironcow/Projects/MonoProjectCloud:/home/ironcow/Projects/MonoProjectCloud/functions/telegram_bot
+ExecStart=/home/ironcow/Projects/MonoProjectCloud/.venv/bin/python /home/ironcow/Projects/MonoProjectCloud/functions/telegram_bot/polling.py
 Restart=always
 RestartSec=5
-TimeoutStopSec=20
-KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
 
