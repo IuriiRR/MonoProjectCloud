@@ -1,0 +1,15 @@
+[Unit]
+Description=CloudApi local scheduler and failover controller
+After=network.target
+
+[Service]
+Type=simple
+User=cloudapi
+WorkingDirectory=/opt/cloudapi
+EnvironmentFile=/etc/cloudapi/local_server.env
+ExecStart=/usr/bin/python -m local_server.scheduler
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -19,8 +19,6 @@ try:
 except Exception:
     from models import SyncTransactionsRequest, SyncTransactionsResponse
 
-ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
-TRANSACTIONS_API_URL = os.environ.get("TRANSACTIONS_API_URL", "http://transactions_api:8083")
 MONO_API_URL = "https://api.monobank.ua"
 
 def _is_truthy(v: str | None) -> bool:
@@ -79,6 +77,127 @@ def _error(message: str, status: int = 400, extra: Dict[str, Any] | None = None)
         body.update(extra)
     return _json_response(body, status=status)
 
+
+def _accounts_api_url() -> str:
+    return os.getenv("ACCOUNTS_API_URL", "http://accounts_api:8082")
+
+
+def _transactions_api_url() -> str:
+    return os.getenv("TRANSACTIONS_API_URL", "http://transactions_api:8083")
+
+
+def run_sync_transactions(req: SyncTransactionsRequest) -> Dict[str, Any]:
+    user_id = req.user_id
+    token = req.mono_token
+    days = req.days
+    internal_headers: Dict[str, str] = {}
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    if internal_api_key:
+        internal_headers["X-Internal-Api-Key"] = internal_api_key
+
+    # 1. Use accounts from request body if provided, otherwise fetch from accounts_api
+    accounts = req.accounts
+    if accounts:
+        logger.info(f"Using {len(accounts)} accounts passed in request for user {user_id}")
+    else:
+        logger.info(f"Fetching accounts for user {user_id} from {_accounts_api_url()}")
+        acc_resp = requests.get(
+            f"{_accounts_api_url()}/users/{user_id}/accounts", headers=internal_headers
+        )
+        if not acc_resp.ok:
+            raise ValueError(f"Failed to fetch accounts: {acc_resp.text}")
+        accounts = acc_resp.json().get("accounts", [])
+    if not accounts:
+        logger.info(f"No accounts found for user {user_id}")
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "processed_accounts": 0,
+            "total_transactions_synced": 0,
+        }
+
+    # Calculate time range
+    to_time = int(time.time())
+    from_time = to_time - (days * 24 * 60 * 60)
+
+    processed_accounts = 0
+    total_transactions_synced = 0
+    errors = []
+
+    for acc in accounts:
+        account_id = acc["id"]
+        logger.info(f"Syncing transactions for account {account_id} (user {user_id})")
+
+        # 2. Fetch transactions from Monobank API
+        mono_headers = {"X-Token": token}
+        url = f"{MONO_API_URL}/personal/statement/{account_id}/{from_time}/{to_time}"
+
+        success = False
+        retries = 0
+        while not success and retries < 2:
+            mono_resp = requests.get(url, headers=mono_headers)
+
+            if mono_resp.status_code == 429:
+                logger.warning("Rate limited by Monobank. Waiting 60 seconds...")
+                time.sleep(60)
+                retries += 1
+                continue
+
+            if not mono_resp.ok:
+                err_msg = f"Failed to fetch Monobank transactions for account {account_id}: {mono_resp.text}"
+                logger.error(err_msg)
+                errors.append(err_msg)
+                break
+
+            success = True
+            transactions_data = mono_resp.json()
+            if not transactions_data:
+                logger.info(f"No transactions found for account {account_id}")
+                processed_accounts += 1
+                break
+
+            # Map Monobank transactions to our internal format
+            mapped_txs = []
+            for tx in transactions_data:
+                mapped_txs.append({
+                    "id": tx["id"],
+                    "time": tx["time"],
+                    "description": tx.get("description", ""),
+                    "amount": tx["amount"],
+                    "operation_amount": tx.get("operationAmount"),
+                    "balance": tx["balance"],
+                    "currency": acc.get("currency"), # Use account's currency info
+                    "mcc_code": tx.get("mcc"),
+                    "comment": tx.get("comment"),
+                    "hold": tx.get("hold", False),
+                })
+
+            # 3. Put transactions to transactions_api with batch request
+            logger.info(f"Sending {len(mapped_txs)} transactions to {_transactions_api_url()}")
+            tx_put_url = f"{_transactions_api_url()}/users/{user_id}/accounts/{account_id}/transactions"
+            put_resp = requests.put(
+                tx_put_url, json={"transactions": mapped_txs}, headers=internal_headers
+            )
+
+            if not put_resp.ok:
+                err_msg = f"Failed to update transactions for account {account_id}: {put_resp.text}"
+                logger.error(err_msg)
+                errors.append(err_msg)
+            else:
+                processed_accounts += 1
+                total_transactions_synced += len(mapped_txs)
+
+            # Small delay to avoid aggressive hits
+            time.sleep(1)
+
+    return {
+        "status": "success",
+        "user_id": user_id,
+        "processed_accounts": processed_accounts,
+        "total_transactions_synced": total_transactions_synced,
+        "errors": errors,
+    }
+
 @functions_framework.http
 def sync_transactions(request):
     """
@@ -108,116 +227,9 @@ def sync_transactions(request):
         except ValidationError as e:
             return _error("Validation error", 400, {"details": e.errors()})
 
-        user_id = req.user_id
-        token = req.mono_token
-        days = req.days
-        internal_headers: Dict[str, str] = {}
-        internal_api_key = os.getenv("INTERNAL_API_KEY", "")
-        if internal_api_key:
-            internal_headers["X-Internal-Api-Key"] = internal_api_key
-
-        # 1. Fetch accounts for this user
-        logger.info(f"Fetching accounts for user {user_id} from {ACCOUNTS_API_URL}")
-        acc_resp = requests.get(
-            f"{ACCOUNTS_API_URL}/users/{user_id}/accounts", headers=internal_headers
-        )
-        if not acc_resp.ok:
-            return _error(f"Failed to fetch accounts: {acc_resp.text}", status=500)
-        
-        accounts = acc_resp.json().get("accounts", [])
-        if not accounts:
-            logger.info(f"No accounts found for user {user_id}")
-            return _json_response({
-                "status": "success",
-                "user_id": user_id,
-                "processed_accounts": 0,
-                "total_transactions_synced": 0
-            })
-
-        # Calculate time range
-        to_time = int(time.time())
-        from_time = to_time - (days * 24 * 60 * 60)
-        
-        processed_accounts = 0
-        total_transactions_synced = 0
-        errors = []
-
-        for acc in accounts:
-            account_id = acc["id"]
-            logger.info(f"Syncing transactions for account {account_id} (user {user_id})")
-            
-            # 2. Fetch transactions from Monobank API
-            mono_headers = {"X-Token": token}
-            url = f"{MONO_API_URL}/personal/statement/{account_id}/{from_time}/{to_time}"
-            
-            success = False
-            retries = 0
-            while not success and retries < 2:
-                mono_resp = requests.get(url, headers=mono_headers)
-                
-                if mono_resp.status_code == 429:
-                    logger.warning(f"Rate limited by Monobank. Waiting 60 seconds...")
-                    time.sleep(60)
-                    retries += 1
-                    continue
-                
-                if not mono_resp.ok:
-                    err_msg = f"Failed to fetch Monobank transactions for account {account_id}: {mono_resp.text}"
-                    logger.error(err_msg)
-                    errors.append(err_msg)
-                    break
-                
-                success = True
-                transactions_data = mono_resp.json()
-                if not transactions_data:
-                    logger.info(f"No transactions found for account {account_id}")
-                    processed_accounts += 1
-                    break
-
-                # Map Monobank transactions to our internal format
-                # Monobank uses CamelCase for some fields in statements, or at least different from client-info.
-                # Actually, based on documentation: id, time, description, mcc, amount, balance, etc.
-                mapped_txs = []
-                for tx in transactions_data:
-                    mapped_txs.append({
-                        "id": tx["id"],
-                        "time": tx["time"],
-                        "description": tx.get("description", ""),
-                        "amount": tx["amount"],
-                        "operation_amount": tx.get("operationAmount"),
-                        "balance": tx["balance"],
-                        "currency": acc.get("currency"), # Use account's currency info
-                        "mcc_code": tx.get("mcc"),
-                        "comment": tx.get("comment"),
-                        "hold": tx.get("hold", False)
-                    })
-
-                # 3. Put transactions to transactions_api with batch request
-                logger.info(f"Sending {len(mapped_txs)} transactions to {TRANSACTIONS_API_URL}")
-                tx_put_url = f"{TRANSACTIONS_API_URL}/users/{user_id}/accounts/{account_id}/transactions"
-                put_resp = requests.put(
-                    tx_put_url, json={"transactions": mapped_txs}, headers=internal_headers
-                )
-                
-                if not put_resp.ok:
-                    err_msg = f"Failed to update transactions for account {account_id}: {put_resp.text}"
-                    logger.error(err_msg)
-                    errors.append(err_msg)
-                else:
-                    processed_accounts += 1
-                    total_transactions_synced += len(mapped_txs)
-                
-                # Small delay to avoid aggressive hits
-                time.sleep(1)
-
-        return _json_response({
-            "status": "success",
-            "user_id": user_id,
-            "processed_accounts": processed_accounts,
-            "total_transactions_synced": total_transactions_synced,
-            "errors": errors
-        })
-
+        return _json_response(run_sync_transactions(req))
+    except ValueError as e:
+        return _error(str(e), status=500)
     except Exception as e:
         logger.exception("Unexpected error during transaction sync")
         return _error(f"Internal server error: {str(e)}", status=500)

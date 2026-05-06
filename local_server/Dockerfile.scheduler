@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+COPY local_server/pyproject.toml /workspace/local_server/pyproject.toml
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+      APScheduler==3.10.4 \
+      Flask==3.0.3 \
+      google-cloud-scheduler==2.16.5 \
+      pydantic==2.9.2 \
+      python-dotenv==1.0.1 \
+      requests==2.31.0
+
+COPY functions /workspace/functions
+COPY local_server/src /workspace/local_server/src
+
+ENV PYTHONPATH=/workspace:/workspace/local_server/src
+EXPOSE 9090

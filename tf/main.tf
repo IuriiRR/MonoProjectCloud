@@ -251,6 +251,11 @@ resource "google_service_account" "telegram_bot" {
   display_name = "telegram-bot Cloud Function service account"
 }
 
+resource "google_service_account" "rpi_local_server" {
+  account_id   = "rpi-local-server-sa"
+  display_name = "rpi local server service account"
+}
+
 resource "google_project_iam_member" "users_api_firestore_access" {
   project = var.project_id
   role    = "roles/datastore.user"
@@ -285,6 +290,18 @@ resource "google_project_iam_member" "report_api_firestore_access" {
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${google_service_account.report_api.email}"
+}
+
+resource "google_project_iam_member" "users_api_scheduler_admin" {
+  project = var.project_id
+  role    = "roles/cloudscheduler.admin"
+  member  = "serviceAccount:${google_service_account.users_api.email}"
+}
+
+resource "google_project_iam_member" "rpi_local_server_scheduler_admin" {
+  project = var.project_id
+  role    = "roles/cloudscheduler.admin"
+  member  = "serviceAccount:${google_service_account.rpi_local_server.email}"
 }
 
 resource "google_secret_manager_secret" "gemini_api_key" {
@@ -343,6 +360,11 @@ resource "google_cloudfunctions2_function" "users_api" {
       REPORT_TIMEZONE       = var.report_timezone
       TELEGRAM_BOT_USERNAME = var.telegram_bot_username
       TELEGRAM_BOT_TOKEN    = var.telegram_bot_token
+      TELEGRAM_WEBHOOK_URL  = var.telegram_webhook_url
+      GCP_SCHEDULER_REGION  = var.region
+      CLOUD_UNBLOCKER_JOB   = var.rpi_unblocker_job_name
+      CLOUD_SYNC_WORKER_JOB = var.sync_worker_scheduler_job_name
+      CLOUD_DAILY_REPORTS_JOB = var.daily_reports_scheduler_job_name
       SENTRY_DSN            = var.sentry_dsn
       DISABLE_SENTRY        = var.sentry_disabled ? "1" : "0"
     }
@@ -583,12 +605,13 @@ resource "google_cloudfunctions2_function" "sync_transactions" {
 
 # Hourly trigger for sync_worker (HTTP)
 resource "google_cloud_scheduler_job" "sync_worker_hourly" {
-  name        = "sync-worker-hourly"
+  name        = var.sync_worker_scheduler_job_name
   description = "Hourly sync of Monobank accounts/transactions for all active users."
   region      = var.region
 
   schedule  = var.sync_worker_schedule
   time_zone = var.scheduler_time_zone
+  paused    = true
 
   attempt_deadline = "300s"
 
@@ -612,12 +635,13 @@ resource "google_cloud_scheduler_job" "sync_worker_hourly" {
 
 # Daily trigger for sending Telegram daily reports (HTTP)
 resource "google_cloud_scheduler_job" "daily_reports_daily" {
-  name        = "daily-reports-daily"
+  name        = var.daily_reports_scheduler_job_name
   description = "Daily send of Telegram reports for all users with daily_report enabled."
   region      = var.region
 
   schedule  = var.daily_reports_schedule
   time_zone = var.scheduler_time_zone
+  paused    = true
 
   attempt_deadline = "600s"
 
@@ -631,6 +655,36 @@ resource "google_cloud_scheduler_job" "daily_reports_daily" {
     }
 
     # Default behavior on the server: offset_days=-1 (send yesterday) in REPORT_TIMEZONE.
+    body = base64encode("{}")
+  }
+
+  depends_on = [
+    google_project_service.cloudscheduler,
+    google_cloudfunctions2_function.users_api,
+  ]
+}
+
+# Failsafe trigger that activates cloud schedulers when the local server is silent.
+resource "google_cloud_scheduler_job" "rpi_unblocker" {
+  name        = var.rpi_unblocker_job_name
+  description = "Failsafe unblocker that re-enables cloud schedulers if Raspberry Pi heartbeat stops."
+  region      = var.region
+
+  schedule  = var.rpi_unblocker_schedule
+  time_zone = var.scheduler_time_zone
+  paused    = false
+
+  attempt_deadline = "60s"
+
+  http_target {
+    uri         = "${google_cloudfunctions2_function.users_api.service_config[0].uri}/internal/scheduler/unblock"
+    http_method = "POST"
+
+    headers = {
+      Content-Type       = "application/json"
+      X-Internal-Api-Key = var.internal_api_key
+    }
+
     body = base64encode("{}")
   }
 

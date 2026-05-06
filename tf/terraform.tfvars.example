@@ -15,6 +15,7 @@ telegram_bot_function_name = "telegram-bot"
 telegram_bot_username      = "your_bot_username" # without @
 # telegram_bot_token         = "123456:ABC..."    # keep in tfvars (NOT in git)
 # telegram_webhook_secret    = "optional-secret"  # keep in tfvars (NOT in git)
+# telegram_webhook_url       = "https://telegram-bot-...run.app"
 
 # Must be globally unique
 bucket_name = "your-gcp-project-id-functions-src"
@@ -35,6 +36,10 @@ auth_mode = "enabled"
 # scheduler_time_zone    = "Europe/Kyiv"
 # sync_worker_schedule   = "0 10,14,18,22 * * *"
 # daily_reports_schedule = "45 22 * * *"
+# sync_worker_scheduler_job_name   = "sync-worker-hourly"
+# daily_reports_scheduler_job_name = "daily-reports-daily"
+# rpi_unblocker_job_name = "rpi-unblocker"
+# rpi_unblocker_schedule = "*/30 * * * *"
 
 # Optional: enable Gemini agent loop in report_api (leave empty for deterministic-only mode)
 # gemini_api_key = "YOUR_GEMINI_API_KEY"

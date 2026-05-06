@@ -325,6 +325,31 @@ def users_api(request):
     path = request.path or "/"
     parts = [p for p in path.split("/") if p]
 
+    if len(parts) == 3 and parts[0] == "internal" and parts[1] == "scheduler" and parts[2] in ("unblock", "cede"):
+        if request.method != "POST":
+            return _error("Method not allowed", 405)
+
+        uid, auth_err, auth_status = authenticate_request(request)
+        if auth_err:
+            return _json_response(auth_err, status=auth_status or 401)
+        if uid != INTERNAL_UID:
+            return _error("Forbidden", 403, {"code": "FORBIDDEN"})
+
+        try:
+            try:
+                from .scheduler_ops import cede_to_local_server, unblock_cloud_jobs
+            except Exception:
+                from scheduler_ops import cede_to_local_server, unblock_cloud_jobs
+
+            if parts[2] == "unblock":
+                result = unblock_cloud_jobs()
+                return _json_response({"status": "ok", "mode": "unblock", **result})
+
+            result = cede_to_local_server()
+            return _json_response({"status": "ok", "mode": "cede", **result})
+        except Exception as e:
+            return _error("Failed to apply scheduler operation", 500, {"details": str(e)})
+
     # Public Telegram callback endpoint (no auth): /telegram/connect?token=...&telegram_id=...
     if parts and parts[0] == "telegram":
         if len(parts) == 1:
@@ -528,6 +553,8 @@ def users_api(request):
                     "DELETE /users/{user_id}/family/members/{member_id}",
                     "GET /telegram/connect?token=...&telegram_id=...",
                     "POST /telegram/reports/daily/send_enabled",
+                    "POST /internal/scheduler/unblock",
+                    "POST /internal/scheduler/cede",
                 ],
             }
         )
