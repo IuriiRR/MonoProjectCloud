@@ -9,5 +9,4 @@ COPY functions /workspace/functions
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -e /workspace/local_server
 
-ENV PYTHONPATH=/workspace:/workspace/local_server/src
-EXPOSE 9090
+ENV PYTHONPATH=/workspace

@@ -1,0 +1,26 @@
+[Unit]
+Description=CloudApi local transactions_api service
+After=network-online.target
+Wants=network-online.target
+PartOf=cloudapi-services.target
+
+[Service]
+Type=simple
+# Matched to README: user ironcow, repo at ~/Projects/MonoProjectCloud. Edit if yours differs.
+User=ironcow
+Group=ironcow
+WorkingDirectory=/home/ironcow/Projects/MonoProjectCloud
+EnvironmentFile=/etc/cloudapi/local_server.env
+Environment=PYTHONPATH=/home/ironcow/Projects/MonoProjectCloud
+ExecStart=/home/ironcow/Projects/MonoProjectCloud/.venv/bin/functions-framework --target=transactions_api --source=functions/transactions_api/main.py --host=127.0.0.1 --port=8083
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

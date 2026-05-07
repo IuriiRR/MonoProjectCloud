@@ -12,7 +12,9 @@ class Settings(BaseModel):
     users_api_url: str
     accounts_api_url: str
     transactions_api_url: str
+    sync_worker_url: str = "http://127.0.0.1:8084"
     sync_transactions_url: str
+    report_api_url: str = ""
 
     internal_api_key: str
     telegram_bot_token: str
@@ -37,7 +39,9 @@ def load_settings() -> Settings:
         users_api_url=(os.getenv("USERS_API_URL") or "").strip(),
         accounts_api_url=(os.getenv("ACCOUNTS_API_URL") or "").strip(),
         transactions_api_url=(os.getenv("TRANSACTIONS_API_URL") or "").strip(),
+        sync_worker_url=(os.getenv("SYNC_WORKER_URL") or "http://127.0.0.1:8084").strip(),
         sync_transactions_url=(os.getenv("SYNC_TRANSACTIONS_URL") or "").strip(),
+        report_api_url=(os.getenv("REPORT_API_URL") or "").strip(),
         internal_api_key=(os.getenv("INTERNAL_API_KEY") or "").strip(),
         telegram_bot_token=(os.getenv("TELEGRAM_BOT_TOKEN") or "").strip(),
         telegram_webhook_url=(os.getenv("TELEGRAM_WEBHOOK_URL") or "").strip(),

@@ -1,7 +1,7 @@
 [Unit]
 Description=CloudApi local scheduler and failover controller
-After=network-online.target
-Wants=network-online.target
+After=network-online.target cloudapi-services.target
+Wants=network-online.target cloudapi-services.target
 
 [Service]
 Type=simple
