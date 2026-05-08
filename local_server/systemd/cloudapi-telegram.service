@@ -1,0 +1,26 @@
+[Unit]
+Description=CloudApi Telegram polling worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Matched to README: user ironcow, repo at ~/Projects/MonoProjectCloud. Edit if yours differs.
+User=ironcow
+Group=ironcow
+WorkingDirectory=/home/ironcow/Projects/MonoProjectCloud/functions/telegram_bot
+EnvironmentFile=/etc/cloudapi/local_server.env
+Environment=PYTHONPATH=/home/ironcow/Projects/MonoProjectCloud:/home/ironcow/Projects/MonoProjectCloud/functions/telegram_bot
+ExecStart=/home/ironcow/Projects/MonoProjectCloud/.venv/bin/python /home/ironcow/Projects/MonoProjectCloud/functions/telegram_bot/polling.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+# ProtectHome=true would block reading the app tree under /home; leave off for typical pyenv layout.
+
+[Install]
+WantedBy=multi-user.target

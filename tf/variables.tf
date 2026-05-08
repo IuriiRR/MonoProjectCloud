@@ -167,6 +167,12 @@ variable "telegram_webhook_secret" {
   default     = ""
 }
 
+variable "telegram_webhook_url" {
+  type        = string
+  description = "Public Telegram webhook URL (usually telegram_bot function URL). Used by scheduler failover handlers."
+  default     = ""
+}
+
 variable "gemini_api_key" {
   type        = string
   description = "Gemini API key (stored in Secret Manager and injected into report_api as GEMINI_API_KEY)."
@@ -212,6 +218,12 @@ variable "sync_worker_schedule" {
   default = "0 10,14,18,22 * * *"
 }
 
+variable "sync_worker_scheduler_job_name" {
+  type        = string
+  description = "Cloud Scheduler job name that triggers sync_worker."
+  default     = "sync-worker-hourly"
+}
+
 variable "daily_reports_schedule" {
   type        = string
   description = "Cron schedule for Cloud Scheduler job that sends Telegram daily reports to all users with daily_report enabled."
@@ -219,10 +231,28 @@ variable "daily_reports_schedule" {
   default = "45 22 * * *"
 }
 
+variable "daily_reports_scheduler_job_name" {
+  type        = string
+  description = "Cloud Scheduler job name that sends daily Telegram reports."
+  default     = "daily-reports-daily"
+}
+
 variable "scheduler_time_zone" {
   type        = string
   description = "Time zone used by Cloud Scheduler (e.g. 'Etc/UTC', 'Europe/Kyiv')."
   default     = "Europe/Kyiv"
+}
+
+variable "rpi_unblocker_job_name" {
+  type        = string
+  description = "Cloud Scheduler job name used as the Raspberry Pi failsafe unblocker."
+  default     = "rpi-unblocker"
+}
+
+variable "rpi_unblocker_schedule" {
+  type        = string
+  description = "Cron schedule for the Raspberry Pi unblocker job. Local server keeps moving next run time."
+  default     = "*/30 * * * *"
 }
 
 variable "sentry_dsn" {

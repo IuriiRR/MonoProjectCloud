@@ -1,10 +1,11 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 class SyncTransactionsRequest(BaseModel):
     user_id: str
     mono_token: str
     days: int = 30 # Default to 30 days of history
+    accounts: Optional[List[Dict[str, Any]]] = None
 
 class SyncTransactionsResponse(BaseModel):
     status: str

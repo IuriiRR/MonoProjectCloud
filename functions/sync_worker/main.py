@@ -17,9 +17,6 @@ try:
 except Exception:
     from models import SyncRequest, SyncResponse
 
-USERS_API_URL = os.environ.get("USERS_API_URL", "http://users_api:8081")
-ACCOUNTS_API_URL = os.environ.get("ACCOUNTS_API_URL", "http://accounts_api:8082")
-SYNC_TRANSACTIONS_URL = os.environ.get("SYNC_TRANSACTIONS_URL", "http://sync_transactions:8085")
 MONO_API_URL = "https://api.monobank.ua"
 
 # Simple currency mapping as a fallback since seed/currency.json is missing
@@ -88,7 +85,20 @@ def _error(message: str, status: int = 400, extra: Dict[str, Any] | None = None)
         body.update(extra)
     return _json_response(body, status=status)
 
-def _trigger_tx_sync(user_id: str, token: str):
+
+def _users_api_url() -> str:
+    return os.getenv("USERS_API_URL", "http://users_api:8081")
+
+
+def _accounts_api_url() -> str:
+    return os.getenv("ACCOUNTS_API_URL", "http://accounts_api:8082")
+
+
+def _sync_transactions_url() -> str:
+    return os.getenv("SYNC_TRANSACTIONS_URL", "http://sync_transactions:8085")
+
+
+def _trigger_tx_sync(user_id: str, token: str, accounts: List[Dict[str, Any]]):
     logger.info(f"Triggering transaction sync for user {user_id}")
     try:
         internal_headers: Dict[str, str] = {}
@@ -96,8 +106,8 @@ def _trigger_tx_sync(user_id: str, token: str):
         if internal_api_key:
             internal_headers["X-Internal-Api-Key"] = internal_api_key
         tx_sync_resp = requests.post(
-            f"{SYNC_TRANSACTIONS_URL}/sync/transactions",
-            json={"user_id": user_id, "mono_token": token},
+            f"{_sync_transactions_url()}/sync/transactions",
+            json={"user_id": user_id, "mono_token": token, "accounts": accounts},
             headers=internal_headers,
             timeout=300 # Wait up to 5 mins in the background thread
         )
@@ -107,6 +117,98 @@ def _trigger_tx_sync(user_id: str, token: str):
             logger.info(f"Transaction sync finished for user {user_id}")
     except Exception as tx_e:
         logger.error(f"Error during background transaction sync for user {user_id}: {str(tx_e)}")
+
+
+def run_sync_accounts() -> Dict[str, Any]:
+    # 1. Fetch all users from users_api
+    logger.info(f"Fetching users from {_users_api_url()}/users")
+    internal_headers: Dict[str, str] = {}
+    internal_api_key = os.getenv("INTERNAL_API_KEY", "")
+    if internal_api_key:
+        internal_headers["X-Internal-Api-Key"] = internal_api_key
+    users_resp = requests.get(f"{_users_api_url()}/users", headers=internal_headers)
+    if not users_resp.ok:
+        raise ValueError(f"Failed to fetch users: {users_resp.text}")
+
+    users = users_resp.json().get("users", [])
+    active_users = [u for u in users if u.get("active") and u.get("mono_token")]
+
+    processed_users = 0
+    total_accounts_synced = 0
+    errors = []
+
+    for user in active_users:
+        user_id = user["user_id"]
+        token = user["mono_token"]
+
+        logger.info(f"Syncing accounts for user {user_id}")
+
+        # 2. Fetch accounts from Monobank API
+        mono_headers = {"X-Token": token}
+        mono_resp = requests.get(f"{MONO_API_URL}/personal/client-info", headers=mono_headers)
+
+        if not mono_resp.ok:
+            err_msg = f"Failed to fetch Monobank data for user {user_id}: {mono_resp.text}"
+            logger.error(err_msg)
+            errors.append(err_msg)
+            continue
+
+        mono_data = mono_resp.json()
+        accounts_to_sync = []
+
+        # Process regular accounts (cards)
+        for acc in mono_data.get("accounts", []):
+            accounts_to_sync.append({
+                "id": acc["id"],
+                "type": "card",
+                "send_id": acc.get("sendId"),
+                "currency": get_currency_data(acc["currencyCode"]),
+                "balance": acc["balance"],
+                "is_active": True, # Mono cards in client-info are active
+            })
+
+        # Process jars
+        for jar in mono_data.get("jars", []):
+            accounts_to_sync.append({
+                "id": jar["id"],
+                "type": "jar",
+                "send_id": jar.get("sendId"),
+                "currency": get_currency_data(jar["currencyCode"]),
+                "balance": jar["balance"],
+                "goal": jar.get("goal"),
+                "title": jar.get("title"),
+                "is_active": True,
+            })
+
+        if not accounts_to_sync:
+            continue
+
+        # 3. Put accounts to accounts_api with batch request
+        logger.info(f"Sending {len(accounts_to_sync)} accounts to {_accounts_api_url()}")
+        put_resp = requests.put(
+            f"{_accounts_api_url()}/users/{user_id}/accounts",
+            json={"accounts": accounts_to_sync},
+            headers=internal_headers,
+        )
+
+        if not put_resp.ok:
+            err_msg = f"Failed to update accounts for user {user_id}: {put_resp.text}"
+            logger.error(err_msg)
+            errors.append(err_msg)
+            continue
+
+        processed_users += 1
+        total_accounts_synced += len(accounts_to_sync)
+
+        # 4. Trigger transaction sync for this user (async), passing accounts we already have
+        threading.Thread(target=_trigger_tx_sync, args=(user_id, token, accounts_to_sync)).start()
+
+    return {
+        "status": "success",
+        "processed_users": processed_users,
+        "total_accounts_synced": total_accounts_synced,
+        "errors": errors,
+    }
 
 @functions_framework.http
 def sync_worker(request):
@@ -136,97 +238,9 @@ def sync_worker(request):
         return auth_err
 
     try:
-        # 1. Fetch all users from users_api
-        logger.info(f"Fetching users from {USERS_API_URL}/users")
-        internal_headers: Dict[str, str] = {}
-        internal_api_key = os.getenv("INTERNAL_API_KEY", "")
-        if internal_api_key:
-            internal_headers["X-Internal-Api-Key"] = internal_api_key
-        users_resp = requests.get(f"{USERS_API_URL}/users", headers=internal_headers)
-        if not users_resp.ok:
-            return _error(f"Failed to fetch users: {users_resp.text}", status=500)
-        
-        users = users_resp.json().get("users", [])
-        active_users = [u for u in users if u.get("active") and u.get("mono_token")]
-        
-        processed_users = 0
-        total_accounts_synced = 0
-        errors = []
-
-        for user in active_users:
-            user_id = user["user_id"]
-            token = user["mono_token"]
-            
-            logger.info(f"Syncing accounts for user {user_id}")
-            
-            # 2. Fetch accounts from Monobank API
-            mono_headers = {"X-Token": token}
-            mono_resp = requests.get(f"{MONO_API_URL}/personal/client-info", headers=mono_headers)
-            
-            if not mono_resp.ok:
-                err_msg = f"Failed to fetch Monobank data for user {user_id}: {mono_resp.text}"
-                logger.error(err_msg)
-                errors.append(err_msg)
-                continue
-            
-            mono_data = mono_resp.json()
-            accounts_to_sync = []
-
-            # Process regular accounts (cards)
-            for acc in mono_data.get("accounts", []):
-                accounts_to_sync.append({
-                    "id": acc["id"],
-                    "type": "card",
-                    "send_id": acc.get("sendId"),
-                    "currency": get_currency_data(acc["currencyCode"]),
-                    "balance": acc["balance"],
-                    "is_active": True, # Mono cards in client-info are active
-                    # Card specific fields mapping if any (maskedPan etc)
-                })
-
-            # Process jars
-            for jar in mono_data.get("jars", []):
-                accounts_to_sync.append({
-                    "id": jar["id"],
-                    "type": "jar",
-                    "send_id": jar.get("sendId"),
-                    "currency": get_currency_data(jar["currencyCode"]),
-                    "balance": jar["balance"],
-                    "goal": jar.get("goal"),
-                    "title": jar.get("title"),
-                    "is_active": True,
-                })
-
-            if not accounts_to_sync:
-                continue
-
-            # 3. Put accounts to accounts_api with batch request
-            logger.info(f"Sending {len(accounts_to_sync)} accounts to {ACCOUNTS_API_URL}")
-            put_resp = requests.put(
-                f"{ACCOUNTS_API_URL}/users/{user_id}/accounts",
-                json={"accounts": accounts_to_sync},
-                headers=internal_headers
-            )
-            
-            if not put_resp.ok:
-                err_msg = f"Failed to update accounts for user {user_id}: {put_resp.text}"
-                logger.error(err_msg)
-                errors.append(err_msg)
-                continue
-            
-            processed_users += 1
-            total_accounts_synced += len(accounts_to_sync)
-
-            # 4. Trigger transaction sync for this user (async)
-            threading.Thread(target=_trigger_tx_sync, args=(user_id, token)).start()
-
-        return _json_response({
-            "status": "success",
-            "processed_users": processed_users,
-            "total_accounts_synced": total_accounts_synced,
-            "errors": errors
-        })
-
+        return _json_response(run_sync_accounts())
+    except ValueError as e:
+        return _error(str(e), status=500)
     except Exception as e:
         logger.exception("Unexpected error during sync")
         return _error(f"Internal server error: {str(e)}", status=500)

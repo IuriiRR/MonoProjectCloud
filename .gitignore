@@ -40,3 +40,7 @@ tf/terraform.tfstate.backup
 
 .firebase
 .DS_Store
+
+# service account
+sa.json
+*/sa.json

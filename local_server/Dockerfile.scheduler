@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /workspace
+
+COPY local_server/pyproject.toml /workspace/local_server/pyproject.toml
+COPY local_server/src /workspace/local_server/src
+COPY functions /workspace/functions
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -e /workspace/local_server
+
+ENV PYTHONPATH=/workspace:/workspace/local_server/src
+EXPOSE 9090

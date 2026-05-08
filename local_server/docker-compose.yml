@@ -1,0 +1,128 @@
+x-service-base: &service_base
+  build:
+    context: ..
+    dockerfile: local_server/Dockerfile.services
+  env_file:
+    - .env
+  volumes:
+    - ../functions:/workspace/functions:ro
+    - ./src:/workspace/local_server/src:ro
+    - ./secrets:/etc/cloudapi:ro
+  restart: unless-stopped
+
+services:
+  users_api:
+    <<: *service_base
+    ports:
+      - "127.0.0.1:8081:8081"
+    command:
+      [
+        "functions-framework",
+        "--target=users_api",
+        "--source=functions/users_api/main.py",
+        "--host=0.0.0.0",
+        "--port=8081",
+      ]
+
+  accounts_api:
+    <<: *service_base
+    ports:
+      - "127.0.0.1:8082:8082"
+    command:
+      [
+        "functions-framework",
+        "--target=accounts_api",
+        "--source=functions/accounts_api/main.py",
+        "--host=0.0.0.0",
+        "--port=8082",
+      ]
+
+  transactions_api:
+    <<: *service_base
+    ports:
+      - "127.0.0.1:8083:8083"
+    command:
+      [
+        "functions-framework",
+        "--target=transactions_api",
+        "--source=functions/transactions_api/main.py",
+        "--host=0.0.0.0",
+        "--port=8083",
+      ]
+
+  sync_worker:
+    <<: *service_base
+    ports:
+      - "127.0.0.1:8084:8084"
+    command:
+      [
+        "functions-framework",
+        "--target=sync_worker",
+        "--source=functions/sync_worker/main.py",
+        "--host=0.0.0.0",
+        "--port=8084",
+      ]
+    depends_on:
+      - users_api
+      - accounts_api
+      - sync_transactions
+
+  sync_transactions:
+    <<: *service_base
+    ports:
+      - "127.0.0.1:8085:8085"
+    command:
+      [
+        "functions-framework",
+        "--target=sync_transactions",
+        "--source=functions/sync_transactions/main.py",
+        "--host=0.0.0.0",
+        "--port=8085",
+      ]
+    depends_on:
+      - accounts_api
+      - transactions_api
+
+  report_api:
+    <<: *service_base
+    ports:
+      - "127.0.0.1:8086:8086"
+    command:
+      [
+        "functions-framework",
+        "--target=report_api",
+        "--source=functions/report_api/main.py",
+        "--host=0.0.0.0",
+        "--port=8086",
+      ]
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: local_server/Dockerfile.scheduler
+    env_file:
+      - .env
+    volumes:
+      - ../functions:/workspace/functions:ro
+      - ./src:/workspace/local_server/src:ro
+      - ./tests:/workspace/local_server/tests:ro
+      - ./secrets:/etc/cloudapi:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+    command: ["python", "-m", "local_server.scheduler"]
+    depends_on:
+      - users_api
+      - sync_worker
+
+  telegram_polling:
+    build:
+      context: ..
+      dockerfile: local_server/Dockerfile.telegram
+    env_file:
+      - .env
+    volumes:
+      - ../functions:/workspace/functions:ro
+      - ./secrets:/etc/cloudapi:ro
+    command: ["python", "/workspace/functions/telegram_bot/polling.py"]
+    depends_on:
+      - users_api

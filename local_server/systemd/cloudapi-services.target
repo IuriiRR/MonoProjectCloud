@@ -1,0 +1,7 @@
+[Unit]
+Description=CloudApi local HTTP services (per-function)
+Wants=cloudapi-users-api.service cloudapi-accounts-api.service cloudapi-transactions-api.service cloudapi-sync-worker.service cloudapi-sync-transactions.service cloudapi-report-api.service
+After=cloudapi-users-api.service cloudapi-accounts-api.service cloudapi-transactions-api.service cloudapi-sync-worker.service cloudapi-sync-transactions.service cloudapi-report-api.service
+
+[Install]
+WantedBy=multi-user.target
