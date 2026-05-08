@@ -304,6 +304,15 @@ resource "google_project_iam_member" "rpi_local_server_scheduler_admin" {
   member  = "serviceAccount:${google_service_account.rpi_local_server.email}"
 }
 
+# Firestore read/write for the local server, since the per-function HTTP services
+# (users_api, accounts_api, transactions_api, report_api) running on the Pi use
+# this same key to talk to Firestore.
+resource "google_project_iam_member" "rpi_local_server_firestore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${google_service_account.rpi_local_server.email}"
+}
+
 resource "google_secret_manager_secret" "gemini_api_key" {
   project   = var.project_id
   secret_id = "gemini-api-key"
