@@ -7,6 +7,12 @@
 
 ## Table of contents
 
+**Maintenance**
+
+- [Document conventions and maintenance](#document-conventions-and-maintenance)
+
+**arc42 sections**
+
 1. [Introduction and Goals](#1-introduction-and-goals)
 2. [Architecture Constraints](#2-architecture-constraints)
 3. [System Scope and Context](#3-system-scope-and-context)
@@ -19,6 +25,39 @@
 10. [Quality Requirements](#10-quality-requirements)
 11. [Risks and Technical Debt](#11-risks-and-technical-debt)
 12. [Glossary](#12-glossary)
+
+---
+
+## Document conventions and maintenance
+
+This file is the **living** architecture description. Treat it as part of the codebase, not a one-off deliverable.
+
+### When to edit (same PR as the code)
+
+| Change | Update these sections |
+|--------|------------------------|
+| New or removed external system (API, provider, observability) | §3, §5, possibly §7 |
+| New backend service or renamed responsibility | §5, §6 if flows change |
+| New user-visible or scheduled flow | §6 (sequence), §5 diagram if edges change |
+| New deploy target, env, or infra resource | §7, §8 (configuration) |
+| Auth, family access, internal call pattern, or secrets handling | §8, §11 if risk profile shifts |
+| Material architectural choice | §9 — add **ADR-N** (append-only). Supersede an earlier ADR with a new ADR that references the old one; do not delete old ADRs. |
+| Mitigated risk (e.g. tightened `firestore.rules`) | §11 — remove or mark resolved with date |
+| New domain term | §12 |
+
+### What not to duplicate here
+
+- **Per-endpoint catalogs** — prefer `docs/users_api.md`, `docs/sync_worker.md`, and route tables in code; arc42 summarizes boundaries and links to sources.
+- **Field-by-field Firestore schema** — canonical detail lives in [firestore_schema.md](firestore_schema.md).
+
+### Review cadence
+
+- **On every meaningful PR** that touches architecture triggers above.
+- **Quarterly skim** — does §4 still match how the system runs? If not, either fix the doc or fix the drift in implementation.
+
+### Agentic / Cursor usage
+
+Project rule [.cursor/rules/architecture.mdc](../.cursor/rules/architecture.mdc) nudges agents to read this doc before non-trivial work and to propose matching updates in the same change set.
 
 ---
 
