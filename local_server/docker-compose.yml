@@ -27,6 +27,7 @@ x-service-cloud: &service_cloud
     - ./src:/workspace/local_server/src:ro
     - ./secrets:/etc/cloudapi:ro
   restart: unless-stopped
+  network_mode: host
 
 services:
 
@@ -43,6 +44,7 @@ services:
 
   users_api:
     <<: *service_base
+    profiles: [local]
     ports:
       - "127.0.0.1:8081:8081"
     command:
@@ -58,6 +60,7 @@ services:
 
   accounts_api:
     <<: *service_base
+    profiles: [local]
     ports:
       - "127.0.0.1:8082:8082"
     command:
@@ -73,6 +76,7 @@ services:
 
   transactions_api:
     <<: *service_base
+    profiles: [local]
     ports:
       - "127.0.0.1:8083:8083"
     command:
@@ -88,6 +92,7 @@ services:
 
   sync_worker:
     <<: *service_base
+    profiles: [local]
     ports:
       - "127.0.0.1:8084:8084"
     command:
@@ -106,6 +111,7 @@ services:
 
   sync_transactions:
     <<: *service_base
+    profiles: [local]
     ports:
       - "127.0.0.1:8085:8085"
     command:
@@ -123,8 +129,6 @@ services:
 
   accounts_api_cloud:
     <<: *service_cloud
-    ports:
-      - "127.0.0.1:8092:8092"
     command:
       [
         "functions-framework",
@@ -136,8 +140,6 @@ services:
 
   transactions_api_cloud:
     <<: *service_cloud
-    ports:
-      - "127.0.0.1:8093:8093"
     command:
       [
         "functions-framework",
@@ -149,12 +151,10 @@ services:
 
   sync_transactions_cloud:
     <<: *service_cloud
-    ports:
-      - "127.0.0.1:8095:8095"
     environment:
       GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID}
-      ACCOUNTS_API_URL: http://accounts_api_cloud:8092
-      TRANSACTIONS_API_URL: http://transactions_api_cloud:8093
+      ACCOUNTS_API_URL: http://localhost:8092
+      TRANSACTIONS_API_URL: http://localhost:8093
     command:
       [
         "functions-framework",
@@ -169,13 +169,11 @@ services:
 
   sync_worker_cloud:
     <<: *service_cloud
-    ports:
-      - "127.0.0.1:8094:8094"
     environment:
       GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID}
-      USERS_API_URL: http://users_api:8081
-      ACCOUNTS_API_URL: http://accounts_api_cloud:8092
-      SYNC_TRANSACTIONS_URL: http://sync_transactions_cloud:8095
+      USERS_API_URL: http://localhost:8081
+      ACCOUNTS_API_URL: http://localhost:8092
+      SYNC_TRANSACTIONS_URL: http://localhost:8095
     command:
       [
         "functions-framework",
@@ -185,12 +183,12 @@ services:
         "--port=8094",
       ]
     depends_on:
-      - users_api
       - accounts_api_cloud
       - sync_transactions_cloud
 
   report_api:
     <<: *service_base
+    profiles: [local]
     ports:
       - "127.0.0.1:8086:8086"
     command:
@@ -205,6 +203,7 @@ services:
       - firebase-emulator
 
   scheduler:
+    profiles: [local]
     build:
       context: ..
       dockerfile: local_server/Dockerfile.scheduler
@@ -229,6 +228,7 @@ services:
       - sync_worker_cloud
 
   telegram_polling:
+    profiles: [local]
     build:
       context: ..
       dockerfile: local_server/Dockerfile.telegram

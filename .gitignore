@@ -44,3 +44,8 @@ tf/terraform.tfstate.backup
 # service account
 sa.json
 */sa.json
+
+# local env files with secrets
+local_server.env
+local_server/local_server.env
+*.egg-info/

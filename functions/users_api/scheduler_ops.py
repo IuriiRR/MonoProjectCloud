@@ -109,14 +109,14 @@ def unblock_cloud_jobs() -> Dict[str, Any]:
     actions: list[str] = []
     warnings: list[str] = []
 
-    for job in (sync_worker_job, daily_reports_job):
+    for job in (sync_worker_job,):
         try:
             resume_job(job)
             actions.append(f"resumed:{job}")
         except Exception as e:
             warnings.append(f"resume_failed:{job}:{e}")
 
-    for job in (sync_worker_job, daily_reports_job):
+    for job in (sync_worker_job,):
         try:
             run_job_now(job)
             actions.append(f"run_now:{job}")
