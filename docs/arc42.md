@@ -536,13 +536,27 @@ References:
 | Pi services       | `/etc/cloudapi/local_server.env` (systemd) or `local_server/secrets/` mount (compose).               |
 | Frontend          | `VITE_*` build-time env, baked into `frontend/dist`.                                                |
 
+**Local Firestore mode (development and Pi offline):**
+- `LOCAL_DB=true` (default in `local_server/.env.example`) activates the Firebase Emulator (`docker compose --profile local up`).
+- Services read `FIRESTORE_EMULATOR_HOST=firebase-emulator:8080` injected by `local_server/docker-compose.yml`.
+- Emulator data persists in `.emulator-data/` (shared with root dev compose; reset with `docker compose down -v`).
+- `LOCAL_DB=false` → `make -C local_server cloud-run` skips the emulator profile and connects to production Cloud Firestore.
+- Firebase Auth remains real (not emulated) even in local mode; only Firestore switches.
+
 ### 8.6 CORS
 
 Each backend service handles `OPTIONS *` manually, returning permissive CORS headers. There is no shared middleware.
 
 ### 8.7 Scheduling model
 
-Three Cloud Scheduler jobs are defined; only one is normally active:
+**Primary (local) pipeline:** The Pi runs two independent cron jobs via APScheduler:
+- **18:00 UTC** — `sync_worker` (8084) synchronizes all users' Monobank accounts and transactions to the local Firestore emulator.
+- **21:45 UTC** — `daily_reports` delivers narrative reports via Telegram.
+
+**Cloud backup pipeline:** A parallel GCP-targeted sync runs on a separate schedule to avoid rate limits and provide independent backup:
+- **07:00 UTC** — `sync_worker_cloud` (8094) orchestrates the same sync flow, but writes accounts and transactions to **Cloud Firestore** (production GCP) via `accounts_api_cloud` (8092) and `sync_transactions_cloud` (8095). Uses `users_api` (8081) from the local emulator as the source of truth for user tokens; only accounts and transactions are replicated to the cloud.
+
+**Cloud Scheduler failover:** Three Cloud Scheduler jobs are defined; only one is normally active:
 
 | Job                         | Default state | Target                                                        | Owner of trigger when active           |
 |-----------------------------|--------------:|---------------------------------------------------------------|----------------------------------------|
@@ -550,7 +564,7 @@ Three Cloud Scheduler jobs are defined; only one is normally active:
 | `daily_reports_daily`       | paused        | cloud `users_api /telegram/reports/daily/send_enabled`        | Resumed only on Pi failure.            |
 | `rpi_unblocker`             | **active**    | cloud `users_api /internal/scheduler/unblock`                 | Cron itself (after heartbeat stops).   |
 
-When the Pi is healthy, **APScheduler on the Pi** drives the same two HTTP routes against `127.0.0.1` services, while `local_server.control_loop` keeps pushing `rpi_unblocker.schedule_time` into the future.
+When the Pi is healthy, **APScheduler on the Pi** drives the local pipeline HTTP routes against `127.0.0.1` services, while `local_server.control_loop` keeps pushing `rpi_unblocker.schedule_time` into the future. The cloud backup pipeline also runs independently on its own schedule, keeping GCP Firestore in sync as a durable backup.
 
 ### 8.8 AI / LLM
 

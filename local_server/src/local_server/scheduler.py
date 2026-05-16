@@ -9,7 +9,7 @@ from local_server.cloud_scheduler import SchedulerGateway
 from local_server.config import load_settings
 from local_server.control_loop import install_shutdown_handlers, start_control_loop
 from local_server.health import create_app
-from local_server.jobs import daily_reports, sync_accounts
+from local_server.jobs import daily_reports, sync_accounts, sync_accounts_cloud
 
 
 logging.basicConfig(level=logging.INFO)
@@ -54,6 +54,12 @@ def main() -> None:
         lambda: daily_reports.run(settings),
         CronTrigger.from_crontab(settings.daily_reports_cron, timezone=settings.report_timezone),
         id="daily_reports",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        lambda: sync_accounts_cloud.run(settings),
+        CronTrigger.from_crontab(settings.cloud_backup_cron, timezone=settings.report_timezone),
+        id="sync_worker_cloud",
         replace_existing=True,
     )
 

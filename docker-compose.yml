@@ -162,3 +162,77 @@ services:
       - report_api
       - telegram_bot
       - firestore
+
+  accounts_api_cloud:
+    build:
+      context: .
+      dockerfile: Dockerfile.accounts_api
+    environment:
+      - GOOGLE_CLOUD_PROJECT=cloud-monohelper
+      - PORT=8092
+    env_file:
+      - .env
+    volumes:
+      - ./local_server/secrets:/etc/cloudapi:ro
+    ports:
+      - "8092:8092"
+    command: ["functions-framework", "--target", "accounts_api", "--source", "main.py", "--port", "8092", "--debug"]
+
+  transactions_api_cloud:
+    build:
+      context: .
+      dockerfile: Dockerfile.transactions_api
+    environment:
+      - GOOGLE_CLOUD_PROJECT=cloud-monohelper
+      - PORT=8093
+    env_file:
+      - .env
+    volumes:
+      - ./local_server/secrets:/etc/cloudapi:ro
+    ports:
+      - "8093:8093"
+    command: ["functions-framework", "--target", "transactions_api", "--source", "main.py", "--port", "8093", "--debug"]
+
+  sync_transactions_cloud:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync_transactions
+    environment:
+      - GOOGLE_CLOUD_PROJECT=cloud-monohelper
+      - ACCOUNTS_API_URL=http://accounts_api_cloud:8092
+      - TRANSACTIONS_API_URL=http://transactions_api_cloud:8093
+      - INTERNAL_API_KEY=dev-internal-key
+      - PORT=8095
+    env_file:
+      - .env
+    volumes:
+      - ./local_server/secrets:/etc/cloudapi:ro
+    ports:
+      - "8095:8095"
+    command: ["functions-framework", "--target", "sync_transactions", "--source", "main.py", "--port", "8095", "--debug"]
+    depends_on:
+      - accounts_api_cloud
+      - transactions_api_cloud
+
+  sync_worker_cloud:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync_worker
+    environment:
+      - GOOGLE_CLOUD_PROJECT=cloud-monohelper
+      - USERS_API_URL=http://users_api:8081
+      - ACCOUNTS_API_URL=http://accounts_api_cloud:8092
+      - SYNC_TRANSACTIONS_URL=http://sync_transactions_cloud:8095
+      - INTERNAL_API_KEY=dev-internal-key
+      - PORT=8094
+    env_file:
+      - .env
+    volumes:
+      - ./local_server/secrets:/etc/cloudapi:ro
+    ports:
+      - "8094:8094"
+    command: ["functions-framework", "--target", "sync_worker", "--source", "main.py", "--port", "8094", "--debug"]
+    depends_on:
+      - users_api
+      - accounts_api_cloud
+      - sync_transactions_cloud

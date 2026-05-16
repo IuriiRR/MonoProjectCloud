@@ -13,6 +13,7 @@ class Settings(BaseModel):
     accounts_api_url: str
     transactions_api_url: str
     sync_worker_url: str = "http://127.0.0.1:8084"
+    sync_worker_cloud_url: str = "http://127.0.0.1:8094"
     sync_transactions_url: str
     report_api_url: str = ""
 
@@ -23,6 +24,7 @@ class Settings(BaseModel):
 
     report_timezone: str = "Europe/Kyiv"
     sync_worker_cron: str = "0 18 * * *"
+    cloud_backup_cron: str = "0 7 * * *"
     daily_reports_cron: str = "45 21 * * *"
     heartbeat_interval_sec: int = 600
     unblocker_lead_sec: int = 1800
@@ -40,6 +42,7 @@ def load_settings() -> Settings:
         accounts_api_url=(os.getenv("ACCOUNTS_API_URL") or "").strip(),
         transactions_api_url=(os.getenv("TRANSACTIONS_API_URL") or "").strip(),
         sync_worker_url=(os.getenv("SYNC_WORKER_URL") or "http://127.0.0.1:8084").strip(),
+        sync_worker_cloud_url=(os.getenv("SYNC_WORKER_CLOUD_URL") or "http://127.0.0.1:8094").strip(),
         sync_transactions_url=(os.getenv("SYNC_TRANSACTIONS_URL") or "").strip(),
         report_api_url=(os.getenv("REPORT_API_URL") or "").strip(),
         internal_api_key=(os.getenv("INTERNAL_API_KEY") or "").strip(),
@@ -48,6 +51,7 @@ def load_settings() -> Settings:
         telegram_webhook_secret=(os.getenv("TELEGRAM_WEBHOOK_SECRET") or "").strip(),
         report_timezone=(os.getenv("REPORT_TIMEZONE") or "Europe/Kyiv").strip(),
         sync_worker_cron=(os.getenv("SYNC_WORKER_CRON") or "0 18 * * *").strip(),
+        cloud_backup_cron=(os.getenv("CLOUD_BACKUP_CRON") or "0 7 * * *").strip(),
         daily_reports_cron=(os.getenv("DAILY_REPORTS_CRON") or "45 21 * * *").strip(),
         heartbeat_interval_sec=int(os.getenv("HEARTBEAT_INTERVAL_SEC") or "600"),
         unblocker_lead_sec=int(os.getenv("UNBLOCKER_LEAD_SEC") or "1800"),
