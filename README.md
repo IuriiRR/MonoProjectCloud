@@ -62,6 +62,18 @@ Run both backend and frontend tests:
 make test
 ```
 
+### Local Admin CLI
+
+An interactive CLI tool is available to query the local Firestore emulator (admin use only).
+You can use it to view user accounts, total wealth, recent transactions, and monthly balance charts.
+
+To run it locally:
+```bash
+make cli
+```
+*(Ensure that the emulator is running via `make run` before starting the CLI)*
+
+
 ### Deployment (GCP & Firebase)
 
 The project is configured for deployment to GCP (Cloud Functions) and Firebase Hosting.
