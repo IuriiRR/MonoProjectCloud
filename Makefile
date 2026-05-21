@@ -14,4 +14,6 @@ frontend-install:
 frontend-dev:
 	cd frontend && npm run dev
 
+cli:
+	FIRESTORE_EMULATOR_HOST=localhost:8080 PYTHONPATH=. python scripts/cli.py
 
