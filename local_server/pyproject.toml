@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   "APScheduler==3.10.4",
   "Flask==3.0.3",
+  "fastapi>=0.111.0",
   "firebase-admin==6.5.0",
   "functions-framework==3.8.3",
   "google-cloud-firestore==2.16.1",
@@ -16,11 +17,15 @@ dependencies = [
   "python-dotenv==1.0.1",
   "requests==2.31.0",
   "sentry-sdk==2.44.0",
+  "sqladmin>=0.17.0",
+  "sqlmodel>=0.0.18",
+  "uvicorn>=0.30.0",
 ]
 
 [project.optional-dependencies]
 test = [
   "pytest==8.3.2",
+  "httpx>=0.23.0",
 ]
 
 [tool.pytest.ini_options]
