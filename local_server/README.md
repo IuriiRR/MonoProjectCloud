@@ -173,13 +173,14 @@ If you already keep the tree elsewhere, sync `local_server/` and `functions/` so
 
 After `pyenv local`, `python` and `python -m venv` inside `"${APP_DIR}"` resolve to the pyenv-managed interpreter via shims.
 
-### 4. Create the venv and install deps
+### 4. Create the virtual environment and install deps using `uv`
+
+Using `uv` is recommended for extremely fast dependency installation and virtualenv management.
 
 ```bash
 cd "${APP_DIR}"
-python -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -e local_server
+uv venv .venv
+uv pip install -e "./local_server[test]" --python .venv/bin/python
 ```
 
 The venv records an absolute path to the pyenv interpreter, so systemd can call `"${APP_DIR}/.venv/bin/python"` directly without pyenv shims at runtime.
@@ -245,12 +246,12 @@ Expect `Local scheduler started` and the `rpi-unblocker` job's next run advancin
 ```bash
 cd "${APP_DIR}"
 git pull
-.venv/bin/pip install -e local_server
+uv pip install -e "./local_server[test]" --python .venv/bin/python
 sudo systemctl restart cloudapi-services.target
 sudo systemctl restart cloudapi-local.service
 ```
 
-If you bump Python: `pyenv install -s 3.11.<new>`, edit `.python-version`, then `rm -rf .venv && python -m venv .venv && .venv/bin/pip install -e local_server`, then restart both targets above.
+If you bump Python: `pyenv install -s 3.11.<new>`, edit `.python-version`, then `rm -rf .venv && uv venv .venv && uv pip install -e "./local_server[test]" --python .venv/bin/python`, then restart both targets above.
 
 ## Verify
 

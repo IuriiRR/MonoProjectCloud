@@ -4,228 +4,29 @@ x-service-base: &service_base
     dockerfile: local_server/Dockerfile.services
   env_file:
     - .env
-  environment:
-    FIRESTORE_EMULATOR_HOST: firebase-emulator:8080
-    FIRESTORE_PROJECT_ID: demo-monobank
-    FIREBASE_AUTH_EMULATOR_HOST: firebase-emulator:9099
   volumes:
     - ../functions:/workspace/functions:ro
     - ./src:/workspace/local_server/src:ro
     - ./secrets:/etc/cloudapi:ro
   restart: unless-stopped
-
-x-service-cloud: &service_cloud
-  build:
-    context: ..
-    dockerfile: local_server/Dockerfile.services
-  env_file:
-    - .env
-  environment:
-    GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID}
-  volumes:
-    - ../functions:/workspace/functions:ro
-    - ./src:/workspace/local_server/src:ro
-    - ./secrets:/etc/cloudapi:ro
-  restart: unless-stopped
-  network_mode: host
 
 services:
 
-  firebase-emulator:
-    profiles: [local]
-    image: andreysenov/firebase-tools
-    command: firebase emulators:start --only firestore,auth --project demo-monobank --import=/emulator-data --export-on-exit
-    ports:
-      - "127.0.0.1:8080:8080"
-      - "127.0.0.1:9099:9099"
-      - "127.0.0.1:4000:4000"
-    volumes:
-      - ../.emulator-data:/emulator-data
-
-  users_api:
+  fastapi_app:
     <<: *service_base
     profiles: [local]
     ports:
-      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:8088:8088"
     command:
       [
-        "functions-framework",
-        "--target=users_api",
-        "--source=functions/users_api/main.py",
-        "--host=0.0.0.0",
-        "--port=8081",
-      ]
-    depends_on:
-      - firebase-emulator
-
-  accounts_api:
-    <<: *service_base
-    profiles: [local]
-    ports:
-      - "127.0.0.1:8082:8082"
-    command:
-      [
-        "functions-framework",
-        "--target=accounts_api",
-        "--source=functions/accounts_api/main.py",
-        "--host=0.0.0.0",
-        "--port=8082",
-      ]
-    depends_on:
-      - firebase-emulator
-
-  transactions_api:
-    <<: *service_base
-    profiles: [local]
-    ports:
-      - "127.0.0.1:8083:8083"
-    command:
-      [
-        "functions-framework",
-        "--target=transactions_api",
-        "--source=functions/transactions_api/main.py",
-        "--host=0.0.0.0",
-        "--port=8083",
-      ]
-    depends_on:
-      - firebase-emulator
-
-  sync_worker:
-    <<: *service_base
-    profiles: [local]
-    ports:
-      - "127.0.0.1:8084:8084"
-    command:
-      [
-        "functions-framework",
-        "--target=sync_worker",
-        "--source=functions/sync_worker/main.py",
-        "--host=0.0.0.0",
-        "--port=8084",
-      ]
-    depends_on:
-      - firebase-emulator
-      - users_api
-      - accounts_api
-      - sync_transactions
-
-  sync_transactions:
-    <<: *service_base
-    profiles: [local]
-    ports:
-      - "127.0.0.1:8085:8085"
-    command:
-      [
-        "functions-framework",
-        "--target=sync_transactions",
-        "--source=functions/sync_transactions/main.py",
-        "--host=0.0.0.0",
-        "--port=8085",
-      ]
-    depends_on:
-      - firebase-emulator
-      - accounts_api
-      - transactions_api
-
-  accounts_api_cloud:
-    <<: *service_cloud
-    command:
-      [
-        "functions-framework",
-        "--target=accounts_api",
-        "--source=functions/accounts_api/main.py",
-        "--host=0.0.0.0",
-        "--port=8092",
+        "uvicorn",
+        "local_server.main:app",
+        "--host", "0.0.0.0",
+        "--port", "8088",
+        "--reload"
       ]
 
-  transactions_api_cloud:
-    <<: *service_cloud
-    command:
-      [
-        "functions-framework",
-        "--target=transactions_api",
-        "--source=functions/transactions_api/main.py",
-        "--host=0.0.0.0",
-        "--port=8093",
-      ]
-
-  sync_transactions_cloud:
-    <<: *service_cloud
-    environment:
-      GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID}
-      ACCOUNTS_API_URL: http://localhost:8092
-      TRANSACTIONS_API_URL: http://localhost:8093
-    command:
-      [
-        "functions-framework",
-        "--target=sync_transactions",
-        "--source=functions/sync_transactions/main.py",
-        "--host=0.0.0.0",
-        "--port=8095",
-      ]
-    depends_on:
-      - accounts_api_cloud
-      - transactions_api_cloud
-
-  sync_worker_cloud:
-    <<: *service_cloud
-    environment:
-      GOOGLE_CLOUD_PROJECT: ${GCP_PROJECT_ID}
-      USERS_API_URL: http://localhost:8081
-      ACCOUNTS_API_URL: http://localhost:8092
-      SYNC_TRANSACTIONS_URL: http://localhost:8095
-    command:
-      [
-        "functions-framework",
-        "--target=sync_worker",
-        "--source=functions/sync_worker/main.py",
-        "--host=0.0.0.0",
-        "--port=8094",
-      ]
-    depends_on:
-      - accounts_api_cloud
-      - sync_transactions_cloud
-
-  report_api:
-    <<: *service_base
-    profiles: [local]
-    ports:
-      - "127.0.0.1:8086:8086"
-    command:
-      [
-        "functions-framework",
-        "--target=report_api",
-        "--source=functions/report_api/main.py",
-        "--host=0.0.0.0",
-        "--port=8086",
-      ]
-    depends_on:
-      - firebase-emulator
-
-  scheduler:
-    profiles: [local]
-    build:
-      context: ..
-      dockerfile: local_server/Dockerfile.scheduler
-    env_file:
-      - .env
-    environment:
-      FIRESTORE_EMULATOR_HOST: firebase-emulator:8080
-      FIRESTORE_PROJECT_ID: demo-monobank
-      FIREBASE_AUTH_EMULATOR_HOST: firebase-emulator:9099
-    volumes:
-      - ../functions:/workspace/functions:ro
-      - ./src:/workspace/local_server/src:ro
-      - ./tests:/workspace/local_server/tests:ro
-      - ./secrets:/etc/cloudapi:ro
-    ports:
-      - "127.0.0.1:9090:9090"
-    command: ["python", "-m", "local_server.scheduler"]
-    depends_on:
-      - firebase-emulator
-      - users_api
-      - sync_worker
-      - sync_worker_cloud
+  # scheduler service removed — scheduling and control loop now run inside fastapi_app lifespan
 
   telegram_polling:
     profiles: [local]
@@ -234,14 +35,9 @@ services:
       dockerfile: local_server/Dockerfile.telegram
     env_file:
       - .env
-    environment:
-      FIRESTORE_EMULATOR_HOST: firebase-emulator:8080
-      FIRESTORE_PROJECT_ID: demo-monobank
-      FIREBASE_AUTH_EMULATOR_HOST: firebase-emulator:9099
     volumes:
       - ../functions:/workspace/functions:ro
       - ./secrets:/etc/cloudapi:ro
     command: ["python", "/workspace/functions/telegram_bot/polling.py"]
     depends_on:
-      - firebase-emulator
-      - users_api
+      - fastapi_app
