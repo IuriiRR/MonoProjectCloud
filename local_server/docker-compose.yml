@@ -16,33 +16,17 @@ services:
     <<: *service_base
     profiles: [local]
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8088:8088"
     command:
       [
         "uvicorn",
         "local_server.main:app",
         "--host", "0.0.0.0",
-        "--port", "8000",
+        "--port", "8088",
         "--reload"
       ]
 
-  scheduler:
-    profiles: [local]
-    build:
-      context: ..
-      dockerfile: local_server/Dockerfile.scheduler
-    env_file:
-      - .env
-    volumes:
-      - ../functions:/workspace/functions:ro
-      - ./src:/workspace/local_server/src:ro
-      - ./tests:/workspace/local_server/tests:ro
-      - ./secrets:/etc/cloudapi:ro
-    ports:
-      - "127.0.0.1:9090:9090"
-    command: ["python", "-m", "local_server.scheduler"]
-    depends_on:
-      - fastapi_app
+  # scheduler service removed — scheduling and control loop now run inside fastapi_app lifespan
 
   telegram_polling:
     profiles: [local]
