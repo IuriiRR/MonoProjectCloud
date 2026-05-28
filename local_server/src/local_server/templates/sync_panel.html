@@ -1,0 +1,104 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">Sync</h2>
+    <div class="page-pretitle">Trigger data synchronisation</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% if result %}
+<div class="col-12">
+  {% if action == "firestore" %}
+    {% if result.ok %}
+    <div class="alert alert-success">
+      Firestore sync complete — users: {{ result.counts.users }}, accounts: {{ result.counts.accounts }}, transactions: {{ result.counts.transactions }}
+    </div>
+    {% else %}
+    <div class="alert alert-danger">Firestore sync failed: {{ result.error }}</div>
+    {% endif %}
+  {% else %}
+    {% if result.status == "success" %}
+    <div class="alert alert-success">
+      {% if action == "accounts" %}
+        Accounts sync complete — {{ result.processed_users }} user(s), {{ result.total_accounts_synced }} account(s) synced
+      {% elif action == "transactions" %}
+        Transactions sync complete — {{ result.processed_accounts }} account(s), {{ result.total_transactions_synced }} transaction(s) synced
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="alert alert-danger">Sync failed: {{ result.error }}</div>
+    {% endif %}
+    {% if result.errors %}
+    <div class="alert alert-warning">
+      <strong>Errors:</strong>
+      <ul class="mb-0">
+        {% for err in result.errors %}
+        <li>{{ err }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Sync Accounts</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">Fetch accounts and jars for all active users from Monobank.</p>
+      <form method="post" action="{{ request.url_for('admin:sync_accounts') }}">
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-rotate me-2"></i>Sync Accounts
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Sync Transactions</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">Fetch transactions for all accounts from Monobank. Note: may be slow due to rate limiting.</p>
+      <form method="post" action="{{ request.url_for('admin:sync_transactions') }}" class="row g-3 align-items-end">
+        <div class="col-auto">
+          <label class="form-label">Days back</label>
+          <input type="number" name="days" value="30" min="1" max="90" class="form-control" style="width:100px" />
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">
+            <i class="fa-solid fa-rotate me-2"></i>Sync Transactions
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Sync from Firestore</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">Pull all users, accounts, and transactions from Cloud Firestore into local SQLite.</p>
+      <form method="post" action="{{ request.url_for('admin:sync_firestore') }}">
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-cloud-arrow-down me-2"></i>Sync from Firestore
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

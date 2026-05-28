@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,8 +8,13 @@ from fastapi.responses import RedirectResponse
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session as SASession
+from sqlmodel import Session as SQLModelSession
 
 from .models import Account, Transaction, User
+from .routers.sync import SyncTransactionsRequest
+from .routers.sync import sync_accounts as _do_sync_accounts
+from .routers.sync import sync_transactions as _do_sync_transactions
+from .sync_firestore import sync_firestore_to_sql
 
 
 class UserAdmin(ModelView, model=User):
@@ -170,6 +176,54 @@ class MonthlyReportView(BaseView):
         )
 
 
+class SyncView(BaseView):
+    name = "Sync"
+    icon = "fa-solid fa-rotate"
+
+    @expose("/sync-panel", methods=["GET"])
+    async def sync_panel(self, request: Request):
+        return await self.templates.TemplateResponse(
+            request, "sync_panel.html", {"result": None, "action": None}
+        )
+
+    @expose("/sync-panel/accounts", methods=["POST"])
+    async def sync_accounts(self, request: Request):
+        engine = self._admin_ref.engine  # type: ignore[assignment]
+
+        def _run():
+            with SQLModelSession(engine) as session:
+                return _do_sync_accounts(session=session)
+
+        result = await asyncio.to_thread(_run)
+        return await self.templates.TemplateResponse(
+            request, "sync_panel.html", {"result": result, "action": "accounts"}
+        )
+
+    @expose("/sync-panel/transactions", methods=["POST"])
+    async def sync_transactions(self, request: Request):
+        form = await request.form()
+        days = int(str(form.get("days", "30") or "30"))
+        engine = self._admin_ref.engine  # type: ignore[assignment]
+
+        def _run():
+            with SQLModelSession(engine) as session:
+                return _do_sync_transactions(
+                    body=SyncTransactionsRequest(days=days), session=session
+                )
+
+        result = await asyncio.to_thread(_run)
+        return await self.templates.TemplateResponse(
+            request, "sync_panel.html", {"result": result, "action": "transactions"}
+        )
+
+    @expose("/sync-panel/firestore", methods=["POST"])
+    async def sync_firestore(self, request: Request):
+        result = await asyncio.to_thread(sync_firestore_to_sql)
+        return await self.templates.TemplateResponse(
+            request, "sync_panel.html", {"result": result, "action": "firestore"}
+        )
+
+
 def setup_admin(app, engine):
     templates_dir = Path(__file__).parent / "templates"
     admin = Admin(app, engine, templates_dir=str(templates_dir))
@@ -178,4 +232,9 @@ def setup_admin(app, engine):
     admin.add_view(CardAccountAdmin)
     admin.add_view(TransactionAdmin)
     admin.add_base_view(MonthlyReportView)
+    admin.add_base_view(SyncView)
+    return admin
+    admin.add_view(TransactionAdmin)
+    admin.add_base_view(MonthlyReportView)
+    admin.add_base_view(SyncView)
     return admin
