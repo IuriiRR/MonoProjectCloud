@@ -157,6 +157,9 @@ class MonthlyReportView(BaseView):
                         "budget": budget,
                         "total_deposits": total_deposits,
                         "spent": spent,
+                        "transactions": [
+                            {"time": tx.time, "balance": tx.balance} for tx in txs
+                        ],
                     }
                 )
 
