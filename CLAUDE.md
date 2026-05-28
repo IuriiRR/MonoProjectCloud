@@ -142,4 +142,5 @@ if os.getenv("FIRESTORE_EMULATOR_HOST"):
 - `docs/arc42.md` — Full architecture documentation (sections: goals, constraints, building blocks, deployment, ADRs)
 - `docs/firestore_schema.md` — Data model
 - `docs/auth.md` — Auth flow and registration
+- `docs/local_server.md` — Local server SQLite schema and all API routes (bootstrap flow, sync endpoints)
 - `README.md` — Local dev quick start and deployment checklist

@@ -26,4 +26,8 @@ def test_list_accounts(client: TestClient):
 def test_sync_accounts(client: TestClient):
     response = client.post("/sync/accounts")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["processed_users"] == 0
+    assert body["total_accounts_synced"] == 0
+    assert body["errors"] == []
