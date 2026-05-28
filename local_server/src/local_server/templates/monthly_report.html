@@ -1,0 +1,68 @@
+{% extends "sqladmin/layout.html" %}
+
+{% block content_header %}
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">Monthly Report</h2>
+    <div class="page-pretitle">Budget jars summary</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-auto">
+          <label class="form-label">Month</label>
+          <input type="month" name="month" value="{{ month }}" class="form-control" />
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Load</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if jars %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ month }}</h3>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-vcenter card-table">
+        <thead>
+          <tr>
+            <th>Jar</th>
+            <th class="text-end">Start Balance</th>
+            <th class="text-end">Current Balance</th>
+            <th class="text-end">Budget</th>
+            <th class="text-end">Total Deposits</th>
+            <th class="text-end">Spent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for jar in jars %}
+          <tr>
+            <td>{{ jar.title }}</td>
+            <td class="text-end">₴{{ "%.2f"|format(jar.start_balance / 100) }}</td>
+            <td class="text-end">₴{{ "%.2f"|format(jar.current_balance / 100) }}</td>
+            <td class="text-end">₴{{ "%.2f"|format(jar.budget / 100) }}</td>
+            <td class="text-end">₴{{ "%.2f"|format(jar.total_deposits / 100) }}</td>
+            <td class="text-end {% if jar.spent < 0 %}text-red{% endif %}">₴{{ "%.2f"|format(jar.spent / 100) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% elif jars is not none %}
+<div class="col-12">
+  <div class="alert alert-info">No budget jars found for {{ month }}.</div>
+</div>
+{% endif %}
+{% endblock %}

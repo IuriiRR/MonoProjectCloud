@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
-from flask import Flask
 
+from flask import Flask
 
 _state = {"last_heartbeat_at": None, "last_error": None}
 
