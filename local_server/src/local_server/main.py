@@ -38,24 +38,24 @@ async def lifespan(app: FastAPI):
         settings = load_settings()
         gateway = SchedulerGateway(settings)
 
-        scheduler.add_job(
-            lambda: sync_accounts.run(settings),
-            CronTrigger.from_crontab(settings.sync_worker_cron, timezone=settings.report_timezone),
-            id="sync_worker",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: daily_reports.run(settings),
-            CronTrigger.from_crontab(settings.daily_reports_cron, timezone=settings.report_timezone),
-            id="daily_reports",
-            replace_existing=True,
-        )
-        scheduler.add_job(
-            lambda: sync_accounts_cloud.run(settings),
-            CronTrigger.from_crontab(settings.cloud_backup_cron, timezone=settings.report_timezone),
-            id="sync_worker_cloud",
-            replace_existing=True,
-        )
+        # scheduler.add_job(
+        #     lambda: sync_accounts.run(settings),
+        #     CronTrigger.from_crontab(settings.sync_worker_cron, timezone=settings.report_timezone),
+        #     id="sync_worker",
+        #     replace_existing=True,
+        # )
+        # scheduler.add_job(
+        #     lambda: daily_reports.run(settings),
+        #     CronTrigger.from_crontab(settings.daily_reports_cron, timezone=settings.report_timezone),
+        #     id="daily_reports",
+        #     replace_existing=True,
+        # )
+        # scheduler.add_job(
+        #     lambda: sync_accounts_cloud.run(settings),
+        #     CronTrigger.from_crontab(settings.cloud_backup_cron, timezone=settings.report_timezone),
+        #     id="sync_worker_cloud",
+        #     replace_existing=True,
+        # )
 
         control_thread = threading.Thread(
             target=start_control_loop,
