@@ -27,61 +27,61 @@ async def lifespan(app: FastAPI):
     setup_admin(app, engine)
 
     _stop_event = Event()
+    yield
+    # # Scheduler + control loop require GCP credentials; skip gracefully in dev/test
+    # try:
+    #     from local_server.cloud_scheduler import SchedulerGateway
+    #     from local_server.config import load_settings
+    #     from local_server.control_loop import start_control_loop, unblock_cloud
+    #     from local_server.jobs import daily_reports, sync_accounts, sync_accounts_cloud
 
-    # Scheduler + control loop require GCP credentials; skip gracefully in dev/test
-    try:
-        from local_server.cloud_scheduler import SchedulerGateway
-        from local_server.config import load_settings
-        from local_server.control_loop import start_control_loop, unblock_cloud
-        from local_server.jobs import daily_reports, sync_accounts, sync_accounts_cloud
+    #     settings = load_settings()
+    #     gateway = SchedulerGateway(settings)
 
-        settings = load_settings()
-        gateway = SchedulerGateway(settings)
+    #     # scheduler.add_job(
+    #     #     lambda: sync_accounts.run(settings),
+    #     #     CronTrigger.from_crontab(settings.sync_worker_cron, timezone=settings.report_timezone),
+    #     #     id="sync_worker",
+    #     #     replace_existing=True,
+    #     # )
+    #     # scheduler.add_job(
+    #     #     lambda: daily_reports.run(settings),
+    #     #     CronTrigger.from_crontab(settings.daily_reports_cron, timezone=settings.report_timezone),
+    #     #     id="daily_reports",
+    #     #     replace_existing=True,
+    #     # )
+    #     # scheduler.add_job(
+    #     #     lambda: sync_accounts_cloud.run(settings),
+    #     #     CronTrigger.from_crontab(settings.cloud_backup_cron, timezone=settings.report_timezone),
+    #     #     id="sync_worker_cloud",
+    #     #     replace_existing=True,
+    #     # )
 
-        # scheduler.add_job(
-        #     lambda: sync_accounts.run(settings),
-        #     CronTrigger.from_crontab(settings.sync_worker_cron, timezone=settings.report_timezone),
-        #     id="sync_worker",
-        #     replace_existing=True,
-        # )
-        # scheduler.add_job(
-        #     lambda: daily_reports.run(settings),
-        #     CronTrigger.from_crontab(settings.daily_reports_cron, timezone=settings.report_timezone),
-        #     id="daily_reports",
-        #     replace_existing=True,
-        # )
-        # scheduler.add_job(
-        #     lambda: sync_accounts_cloud.run(settings),
-        #     CronTrigger.from_crontab(settings.cloud_backup_cron, timezone=settings.report_timezone),
-        #     id="sync_worker_cloud",
-        #     replace_existing=True,
-        # )
+    #     control_thread = threading.Thread(
+    #         target=start_control_loop,
+    #         args=(gateway, settings, _stop_event),
+    #         daemon=True,
+    #     )
+    #     control_thread.start()
 
-        control_thread = threading.Thread(
-            target=start_control_loop,
-            args=(gateway, settings, _stop_event),
-            daemon=True,
-        )
-        control_thread.start()
+    #     scheduler.start()
+    #     logger.info("Scheduler and control loop started")
 
-        scheduler.start()
-        logger.info("Scheduler and control loop started")
+    #     yield
 
-        yield
+    #     # Graceful shutdown: restore cloud jobs before stopping
+    #     _stop_event.set()
+    #     try:
+    #         unblock_cloud(gateway, settings)
+    #     except Exception as e:
+    #         logger.error("unblock_cloud failed during shutdown: %s", e)
+    #     scheduler.shutdown()
 
-        # Graceful shutdown: restore cloud jobs before stopping
-        _stop_event.set()
-        try:
-            unblock_cloud(gateway, settings)
-        except Exception as e:
-            logger.error("unblock_cloud failed during shutdown: %s", e)
-        scheduler.shutdown()
-
-    except Exception as e:
-        logger.warning("Scheduler/control loop skipped (likely missing GCP creds): %s", e)
-        scheduler.start()
-        yield
-        scheduler.shutdown()
+    # except Exception as e:
+    #     logger.warning("Scheduler/control loop skipped (likely missing GCP creds): %s", e)
+    #     scheduler.start()
+    #     yield
+    #     scheduler.shutdown()
 
 
 app = FastAPI(title="CloudApi Local Server", lifespan=lifespan)
