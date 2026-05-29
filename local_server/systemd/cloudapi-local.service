@@ -1,5 +1,5 @@
 [Unit]
-Description=CloudApi local scheduler and failover controller
+Description=CloudApi local admin server (FastAPI/uvicorn on port 8088)
 After=network-online.target cloudapi-services.target
 Wants=network-online.target cloudapi-services.target
 
@@ -11,7 +11,7 @@ Group=ironcow
 WorkingDirectory=/home/ironcow/Projects/MonoProjectCloud
 EnvironmentFile=/etc/cloudapi/local_server.env
 Environment=PYTHONPATH=/home/ironcow/Projects/MonoProjectCloud:/home/ironcow/Projects/MonoProjectCloud/local_server/src
-ExecStart=/home/ironcow/Projects/MonoProjectCloud/.venv/bin/python -m local_server.scheduler
+ExecStart=/home/ironcow/Projects/MonoProjectCloud/.venv/bin/uvicorn local_server.main:app --host 127.0.0.1 --port 8088
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

@@ -14,12 +14,13 @@ This folder runs the full backend on a Raspberry Pi: each cloud function lives a
   | `sync_worker`        | 8084  | [functions/sync_worker/main.py](../functions/sync_worker/main.py)           |
   | `sync_transactions`  | 8085  | [functions/sync_transactions/main.py](../functions/sync_transactions/main.py) |
   | `report_api`         | 8086  | [functions/report_api/main.py](../functions/report_api/main.py)             |
+  | `local_server` admin | 8088  | [local_server/src/local_server/main.py](src/local_server/main.py)           |
 
-- **Runs local cron jobs** (APScheduler) that POST to the local services:
-  - `sync_worker` accounts sync at `SYNC_WORKER_CRON` (default `0 18 * * *`).
-  - daily Telegram reports trigger at `DAILY_REPORTS_CRON` (default `45 21 * * *`).
+- **Hosts the admin panel and sync API** (`cloudapi-local.service`) as a FastAPI/uvicorn app on port 8088:
+  - `/admin` — SQLAdmin web UI (jars, cards, transactions, monthly report, sync panel)
+  - `/sync/*` — account and transaction sync endpoints
+  - `/healthz` — health check
 - **Runs the Telegram bot in polling mode** as `cloudapi-telegram.service` (no inbound webhook needed).
-- **Maintains a heartbeat** that pushes the cloud `rpi-unblocker` Cloud Scheduler job into the future every `HEARTBEAT_INTERVAL_SEC` so cloud failover stays armed but never fires while the Pi is up.
 - **Falls back automatically**: if the Pi stops pushing the unblocker, GCP wakes the cloud `users_api`, which resumes the cloud schedulers and re-points the Telegram webhook to the cloud `telegram_bot` function.
 
 ## Architecture
@@ -231,35 +232,48 @@ for p in 8081 8082 8083 8084 8085 8086; do
   echo -n "$p: "; curl -fsS http://127.0.0.1:$p/ | head -c 200; echo
 done
 
-# Scheduler + heartbeat:
-curl -fsS http://127.0.0.1:9090/healthz
+# Admin server (cloudapi-local.service) health + admin panel:
+curl -fsS http://127.0.0.1:8088/healthz
+curl -fsI http://127.0.0.1:8088/admin   # should return 200 or redirect to /admin/
 journalctl -u cloudapi-local.service -f
-
-# rpi-unblocker keeps moving forward while the Pi is up:
-gcloud scheduler jobs describe rpi-unblocker --location=europe-west1
 ```
 
-Expect `Local scheduler started` and the `rpi-unblocker` job's next run advancing every cycle.
+### 8. Update service after code changes on the Pi
 
-### 8. Update / rollback on the Pi
+Run these steps any time you `git push` new code (e.g. changes to `admin.py`, routers, models):
 
 ```bash
 cd "${APP_DIR}"
+
+# 1. Pull latest code
 git pull
+
+# 2. Sync Python dependencies (fast, only installs what changed)
 uv pip install -e "./local_server[test]" --python .venv/bin/python
+
+# 3a. Restart the per-function HTTP services (ports 8081–8086)
+#     Only needed if you changed code under functions/ or local_server routers
 sudo systemctl restart cloudapi-services.target
+
+# 3b. Restart the admin server (port 8088)
+#     Always needed for changes to local_server/ (admin.py, models, routers, etc.)
+sudo cp "${APP_DIR}/local_server/systemd/cloudapi-local.service" /etc/systemd/system/
+sudo systemctl daemon-reload          # only needed if the .service file itself changed
 sudo systemctl restart cloudapi-local.service
+
+# 4. Verify
+sudo systemctl status cloudapi-local.service
+curl -fsS http://127.0.0.1:8088/healthz
+curl -fsI http://127.0.0.1:8088/admin
 ```
 
 If you bump Python: `pyenv install -s 3.11.<new>`, edit `.python-version`, then `rm -rf .venv && uv venv .venv && uv pip install -e "./local_server[test]" --python .venv/bin/python`, then restart both targets above.
 
 ## Verify
 
-- Health:
-  - `curl http://localhost:9090/healthz`
-- Heartbeat movement:
-  - `gcloud scheduler jobs describe rpi-unblocker --location=europe-west1`
-  - Verify upcoming run keeps moving forward.
+- Admin server health: `curl http://localhost:8088/healthz`
+- Admin panel: `curl -fsI http://localhost:8088/admin` (expect 200 or redirect)
+- Per-function services: `for p in 8081 8082 8083 8084 8085 8086; do echo -n "$p: "; curl -fsS http://127.0.0.1:$p/ | head -c 200; echo; done`
 
 ## Manual Failover Test
 

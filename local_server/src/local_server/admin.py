@@ -234,7 +234,3 @@ def setup_admin(app, engine):
     admin.add_base_view(MonthlyReportView)
     admin.add_base_view(SyncView)
     return admin
-    admin.add_view(TransactionAdmin)
-    admin.add_base_view(MonthlyReportView)
-    admin.add_base_view(SyncView)
-    return admin
