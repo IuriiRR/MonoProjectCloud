@@ -23,7 +23,9 @@ def test_list_accounts(client: TestClient):
     assert response.status_code == 200
     assert response.json() == {"accounts": []}
 
-def test_sync_accounts(client: TestClient):
+def test_sync_accounts(client: TestClient, monkeypatch):
+    mock_result = {"status": "success", "processed_users": 0, "total_accounts_synced": 0, "errors": []}
+    monkeypatch.setattr("local_server.routers.sync.sync_accounts", lambda session: mock_result)
     response = client.post("/sync/accounts")
     assert response.status_code == 200
     body = response.json()
