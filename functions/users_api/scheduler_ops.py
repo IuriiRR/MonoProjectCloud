@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any, Dict
 
 from google.cloud import scheduler_v1
@@ -41,14 +41,6 @@ def run_job_now(job_name: str) -> None:
     _scheduler_client().run_job(name=_job_path(job_name))
 
 
-def push_job_forward(job_name: str, *, lead_seconds: int) -> None:
-    client = _scheduler_client()
-    job = client.get_job(name=_job_path(job_name))
-    next_run = datetime.now(timezone.utc) + timedelta(seconds=max(lead_seconds, 1))
-    job.schedule_time = next_run
-    client.update_job(job=job)
-
-
 def _telegram_api(bot_token: str, method: str, body: Dict[str, Any]) -> Any:
     import urllib.error
     import urllib.request
@@ -86,21 +78,6 @@ def set_telegram_webhook() -> str:
     return str(result.get("description") or "ok")
 
 
-def delete_telegram_webhook(*, drop_pending_updates: bool = False) -> str:
-    token = _env("TELEGRAM_BOT_TOKEN")
-    if not token:
-        raise ValueError("Missing TELEGRAM_BOT_TOKEN")
-
-    result = _telegram_api(
-        token,
-        "deleteWebhook",
-        {"drop_pending_updates": bool(drop_pending_updates)},
-    ) or {}
-    if not bool(result.get("ok")):
-        raise ValueError(f"deleteWebhook failed: {result}")
-    return str(result.get("description") or "ok")
-
-
 def unblock_cloud_jobs() -> Dict[str, Any]:
     sync_worker_job = _env("CLOUD_SYNC_WORKER_JOB", "sync-worker-hourly")
     daily_reports_job = _env("CLOUD_DAILY_REPORTS_JOB", "daily-reports-daily")
@@ -134,42 +111,5 @@ def unblock_cloud_jobs() -> Dict[str, Any]:
         actions.append(f"paused:{unblocker_job}")
     except Exception as e:
         warnings.append(f"pause_failed:{unblocker_job}:{e}")
-
-    return {"actions": actions, "warnings": warnings}
-
-
-def cede_to_local_server() -> Dict[str, Any]:
-    sync_worker_job = _env("CLOUD_SYNC_WORKER_JOB", "sync-worker-hourly")
-    daily_reports_job = _env("CLOUD_DAILY_REPORTS_JOB", "daily-reports-daily")
-    unblocker_job = _env("CLOUD_UNBLOCKER_JOB", "rpi-unblocker")
-    unblocker_lead_sec = int(_env("UNBLOCKER_LEAD_SEC", "1800") or "1800")
-
-    actions: list[str] = []
-    warnings: list[str] = []
-
-    for job in (sync_worker_job, daily_reports_job):
-        try:
-            pause_job(job)
-            actions.append(f"paused:{job}")
-        except Exception as e:
-            warnings.append(f"pause_failed:{job}:{e}")
-
-    try:
-        description = delete_telegram_webhook(drop_pending_updates=False)
-        actions.append(f"deleted_webhook:{description}")
-    except Exception as e:
-        warnings.append(f"delete_webhook_failed:{e}")
-
-    try:
-        resume_job(unblocker_job)
-        actions.append(f"resumed:{unblocker_job}")
-    except Exception as e:
-        warnings.append(f"resume_failed:{unblocker_job}:{e}")
-
-    try:
-        push_job_forward(unblocker_job, lead_seconds=unblocker_lead_sec)
-        actions.append(f"pushed_forward:{unblocker_job}:{unblocker_lead_sec}")
-    except Exception as e:
-        warnings.append(f"push_forward_failed:{unblocker_job}:{e}")
 
     return {"actions": actions, "warnings": warnings}
