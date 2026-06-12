@@ -1,9 +1,8 @@
 # CloudApi — arc42 Architecture Documentation
 
 > Single-document arc42 description of CloudApi: a personal Monobank
-> aggregator with a React web UI and a Telegram bot, running primarily on a
-> Raspberry Pi with passive failover to GCP Cloud Functions. Cloud Firestore
-> is the shared data plane.
+> aggregator with a React web UI and a Telegram bot, running on GCP Cloud
+> Functions. Cloud Firestore is the shared data plane.
 
 ## Table of contents
 
@@ -76,9 +75,9 @@ narrative report, and delivers everything through two channels:
 
 | # | Quality       | Motivation                                                                                          |
 |---|---------------|-----------------------------------------------------------------------------------------------------|
-| 1 | Low cost      | Personal project; must fit GCP / Firebase free tiers when the Pi is offline.                        |
+| 1 | Low cost      | Personal project; must fit GCP / Firebase free tiers under normal household load.                   |
 | 2 | Durability    | Financial data; loss is unacceptable. Firestore is the single source of truth.                     |
-| 3 | Availability  | Hourly sync and daily report must continue even if the Raspberry Pi dies (cloud failover).         |
+| 3 | Availability  | Hourly sync and daily report must not be lost on transient failures.                               |
 | 4 | Operability   | Single operator; deploy via Terraform + one shell script; observable via Sentry.                   |
 
 ### 1.3 Stakeholders
@@ -99,7 +98,6 @@ narrative report, and delivers everything through two channels:
 - **Language / runtime:** Python 3.11, [Functions Framework](https://github.com/GoogleCloudPlatform/functions-framework-python) for every backend service; React 18 + TypeScript + Vite + Tailwind for the frontend.
 - **Cloud platform:** Google Cloud + Firebase. Cloud Functions Gen2, Cloud Firestore, Firebase Auth, Firebase Hosting, Cloud Scheduler, Secret Manager.
 - **Data store:** Cloud Firestore only. No relational database.
-- **Edge runtime:** Raspberry Pi (single-board ARM64), Linux, Docker or systemd.
 - **IaC:** Terraform for everything in GCP (`tf/main.tf`, `tf/variables.tf`).
 
 ### 2.2 Organisational constraints
@@ -136,7 +134,7 @@ flowchart LR
 
   WebUser -->|HTTPS, ID token| CloudApi
   TgUser -->|messages| Telegram
-  Telegram -->|polling or webhook| CloudApi
+  Telegram -->|webhook| CloudApi
   CloudApi -->|sendMessage| Telegram
   CloudApi -->|client-info, statement| Monobank
   CloudApi -->|generateContent| Gemini
@@ -151,10 +149,10 @@ flowchart LR
 | Partner            | Direction | Protocol / endpoint                                                                  | Purpose                                          |
 |--------------------|-----------|--------------------------------------------------------------------------------------|--------------------------------------------------|
 | Monobank           | out       | `GET https://api.monobank.ua/personal/client-info`, `.../statement/{acc}/{from}/{to}` | Fetch accounts and transactions (`X-Token`).     |
-| Telegram Bot API   | both      | `getUpdates`, `setWebhook`, `deleteWebhook`, `sendMessage`, `answerCallbackQuery`     | Bot polling (Pi) or webhook (cloud) and replies. |
+| Telegram Bot API   | both      | `setWebhook`, `sendMessage`, `answerCallbackQuery`                                    | Webhook updates and bot replies.                 |
 | Firebase Auth      | out       | OIDC / JWKs                                                                          | Verify user ID tokens.                            |
 | Cloud Firestore    | both      | gRPC / REST                                                                          | Persist users, accounts, transactions, cache.    |
-| Cloud Scheduler    | in        | HTTP cron with `X-Internal-Api-Key`                                                  | Hourly sync, daily report, Pi failover trigger.  |
+| Cloud Scheduler    | in        | HTTP cron with `X-Internal-Api-Key`                                                  | Hourly sync, daily report.                       |
 | Google Gemini      | out       | `google-genai` SDK, model `gemini-2.5-flash-lite`                                    | Optional LLM-enhanced daily report narrative.    |
 | Sentry             | out       | DSN                                                                                  | Error reporting (optional).                      |
 
@@ -165,10 +163,8 @@ flowchart LR
 | Concern                       | Decision                                                                                                                                |
 |-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
 | Decomposition                 | One service per bounded context: `users`, `accounts`, `transactions`, `report`, `sync_worker`, `sync_transactions`, `telegram_bot`.     |
-| Same code, two runtimes       | Each service ships as a Cloud Function Gen2 **and** as a `functions-framework` process on the Pi. Source under `functions/<svc>/` is shared. |
-| Primary placement             | Pi runs all services on `127.0.0.1:8081-8086` plus an APScheduler-driven scheduler. Cloud Functions are kept as passive failover.        |
-| Failover                      | Dead-man's-switch: `rpi_unblocker` Cloud Scheduler job is continually pushed forward by the Pi heartbeat. If heartbeat stops, the job fires and re-enables cloud schedulers + Telegram webhook. |
-| Persistence                   | Cloud Firestore as the only durable store. Hierarchical, per-user data model. Same DB for Pi and cloud paths.                            |
+| Runtime                       | All services deploy as Cloud Functions Gen2. Source under `functions/<svc>/` is self-contained per function.                            |
+| Persistence                   | Cloud Firestore as the only durable store. Hierarchical, per-user data model.                                                            |
 | Identity                      | Firebase Auth for end users (Google + email/password). Internal API key for service-to-service.                                          |
 | Frontend                      | React SPA on Firebase Hosting; Firebase JS SDK for auth; direct `fetch` to four backend base URLs configured at build time.              |
 | LLM                           | Optional: `report_api` calls Gemini when `GEMINI_API_KEY` is set; otherwise renders a deterministic markdown report.                     |
@@ -196,11 +192,6 @@ flowchart LR
     TelegramBot[telegram_bot]
   end
 
-  subgraph edge [Raspberry Pi edge]
-    PiScheduler[local_server.scheduler]
-    Polling[telegram polling]
-  end
-
   Firestore[(Cloud Firestore)]
   Monobank[Monobank API]
   Gemini[Gemini API]
@@ -214,12 +205,8 @@ flowchart LR
 
   TgClient --> Telegram
   Telegram --> TelegramBot
-  Telegram --> Polling
-  Polling --> UsersApi
   TelegramBot --> UsersApi
 
-  PiScheduler --> SyncWorker
-  PiScheduler --> UsersApi
   CloudSched --> UsersApi
   CloudSched --> SyncWorker
 
@@ -247,15 +234,14 @@ flowchart LR
 
 | Block               | Responsibility                                                                                          | Interface (in)                                                                                    | Collaborators (out)                                  |
 |---------------------|---------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|------------------------------------------------------|
-| `users_api`         | User CRUD; family graph; Telegram link state; daily-report orchestration; cloud-scheduler control loop. | `GET/POST/PUT/PATCH/DELETE /users[/...]`, `/users/{id}/telegram/...`, `/users/{id}/family/...`, `/internal/scheduler/{unblock,cede}`, `/telegram/connect`, `/telegram/reports/daily/send_enabled` | Firestore, Firebase Auth, `report_api`, Telegram API, Cloud Scheduler |
+| `users_api`         | User CRUD; family graph; Telegram link state; daily-report orchestration; cloud-scheduler control.      | `GET/POST/PUT/PATCH/DELETE /users[/...]`, `/users/{id}/telegram/...`, `/users/{id}/family/...`, `/internal/scheduler/unblock`, `/telegram/connect`, `/telegram/reports/daily/send_enabled` | Firestore, Firebase Auth, `report_api`, Telegram API, Cloud Scheduler |
 | `accounts_api`      | CRUD for accounts under `users/{uid}/accounts`. Family read-only.                                       | `GET/POST/PUT /users/{uid}/accounts[/{id}]`                                                       | Firestore, Firebase Auth                              |
 | `transactions_api`  | CRUD plus aggregations: balance chart, monthly summary; collection-group queries.                       | `GET/POST/PUT /users/{uid}/accounts/{aid}/transactions[/{tid}]`, `/users/{uid}/transactions`, `/users/{uid}/charts/...`, internal `/transactions` | Firestore, Firebase Auth                              |
 | `report_api`        | Compose daily report; deterministic markdown plus optional LLM rewrite; cache in Firestore.             | `GET /users/{uid}/reports/daily?date=&tz=&llm=`                                                   | Firestore, Gemini (optional)                          |
 | `sync_worker`       | Hourly fan-out: list users, fetch Monobank `client-info`, push accounts, kick `sync_transactions`.       | `POST /sync/accounts`                                                                             | `users_api`, `accounts_api`, `sync_transactions`, Monobank |
 | `sync_transactions` | Pull Monobank statements per account, batch-write transactions.                                          | `POST /sync/transactions`                                                                         | `accounts_api`, `transactions_api`, Monobank          |
-| `telegram_bot`      | Webhook handler in cloud; routes `/start <token>` connects through `users_api`.                          | `GET/POST /` (Telegram update payload)                                                            | `users_api`, Telegram API                             |
+| `telegram_bot`      | Webhook handler; routes `/start <token>` connects through `users_api`.                                   | `GET/POST /` (Telegram update payload)                                                            | `users_api`, Telegram API                             |
 | `frontend`          | React SPA: login/register, dashboard, charts, settings, report.                                          | Firebase Hosting + browser fetch                                                                  | Firebase Auth, four backend services                  |
-| `local_server.scheduler` | APScheduler-driven cron on Pi; runs heartbeat + control loop; serves `/healthz`.                    | `GET /healthz` on `127.0.0.1:9090`                                                                | All local services, Cloud Scheduler                   |
 
 References:
 [functions/users_api/main.py](../functions/users_api/main.py),
@@ -265,8 +251,7 @@ References:
 [functions/sync_worker/main.py](../functions/sync_worker/main.py),
 [functions/sync_transactions/main.py](../functions/sync_transactions/main.py),
 [functions/telegram_bot/main.py](../functions/telegram_bot/main.py),
-[frontend/src/App.tsx](../frontend/src/App.tsx),
-[local_server/src/local_server/scheduler.py](../local_server/src/local_server/scheduler.py).
+[frontend/src/App.tsx](../frontend/src/App.tsx).
 
 ---
 
@@ -302,12 +287,12 @@ sequenceDiagram
   end
 ```
 
-### 6.2 Hourly Monobank sync (Pi primary)
+### 6.2 Hourly Monobank sync
 
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Cron as APScheduler (Pi)
+  participant Cron as Cloud Scheduler
   participant SW as sync_worker
   participant UA as users_api
   participant Mono as Monobank
@@ -334,7 +319,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant Cron as APScheduler (Pi)
+  participant Cron as Cloud Scheduler
   participant UA as users_api
   participant RA as report_api
   participant FS as Firestore
@@ -362,7 +347,7 @@ sequenceDiagram
   autonumber
   participant U as Telegram user
   participant TG as Telegram
-  participant Bot as telegram_bot (or polling)
+  participant Bot as telegram_bot
   participant UA as users_api
   participant FS as Firestore
 
@@ -374,32 +359,7 @@ sequenceDiagram
   Bot->>TG: sendMessage("Connected.")
 ```
 
-### 6.5 Pi failover (dead-man's-switch)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant Pi as local_server.control_loop
-  participant CS as Cloud Scheduler
-  participant UA as users_api (cloud)
-  participant TG as Telegram
-
-  Note over Pi,CS: Normal operation
-  loop every HEARTBEAT_INTERVAL_SEC
-    Pi->>CS: update_job(rpi_unblocker, schedule_time = now + UNBLOCKER_LEAD_SEC)
-  end
-
-  Note over Pi: Pi dies / loses connectivity
-  CS->>UA: POST /internal/scheduler/unblock (X-Internal-Api-Key)
-  UA->>CS: Resume sync_worker_hourly + daily_reports_daily
-  UA->>CS: Run them now
-  UA->>TG: setWebhook(cloud telegram_bot URL)
-  UA->>CS: Pause rpi_unblocker (until Pi cedes again)
-```
-
 References:
-[local_server/src/local_server/control_loop.py](../local_server/src/local_server/control_loop.py),
-[local_server/src/local_server/cloud_scheduler.py](../local_server/src/local_server/cloud_scheduler.py),
 [functions/users_api/main.py](../functions/users_api/main.py).
 
 ---
@@ -408,21 +368,7 @@ References:
 
 ```mermaid
 flowchart TB
-  subgraph pi [Raspberry Pi - PRIMARY]
-    direction TB
-    subgraph piServices [functions-framework processes 127.0.0.1]
-      pUA[users_api :8081]
-      pAA[accounts_api :8082]
-      pTA[transactions_api :8083]
-      pSW[sync_worker :8084]
-      pST[sync_transactions :8085]
-      pRA[report_api :8086]
-    end
-    pSched[cloudapi-local<br/>scheduler + heartbeat<br/>:9090]
-    pTel[cloudapi-telegram<br/>polling]
-  end
-
-  subgraph gcp [GCP - FAILOVER and DATA PLANE]
+  subgraph gcp [GCP]
     direction TB
     subgraph cf [Cloud Functions Gen2]
       cUA[users_api]
@@ -435,9 +381,9 @@ flowchart TB
     end
     fs[(Cloud Firestore)]
     fa[Firebase Auth]
-    cSchedHourly[sync_worker_hourly<br/>PAUSED]
-    cSchedDaily[daily_reports_daily<br/>PAUSED]
-    cSchedUnblock[rpi_unblocker<br/>ACTIVE]
+    cSchedHourly[sync_worker_hourly]
+    cSchedDaily[daily_reports_daily]
+    cSchedUnblock[rpi_unblocker]
     sm[Secret Manager<br/>gemini-api-key]
     gcs[GCS bucket<br/>function sources]
   end
@@ -448,21 +394,15 @@ flowchart TB
 
   Browser[User browser] --> spa
   spa --> fa
-  spa -->|cloud or pi URL| cUA
+  spa --> cUA
   spa --> cAA
   spa --> cTA
   spa --> cRA
 
-  pSched --> piServices
-  pSched -->|push_job_forward| cSchedUnblock
-  pTel --> pUA
-
   cSchedUnblock --> cUA
-  cSchedHourly -.failover.-> cSW
-  cSchedDaily -.failover.-> cUA
+  cSchedHourly --> cSW
+  cSchedDaily --> cUA
 
-  piServices --> fs
-  piServices --> fa
   cf --> fs
   cf --> fa
   cRA --> sm
@@ -470,27 +410,21 @@ flowchart TB
 
 ### 7.1 Nodes
 
-| Node               | Provisioned by                                        | Contents                                                                                                                                  |
-|--------------------|-------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| Raspberry Pi       | Manual + `local_server/docker-compose.yml` or systemd | Six functions-framework HTTP services (8081-8086), `cloudapi-local` scheduler (9090), `cloudapi-telegram` polling worker.                 |
-| GCP project        | Terraform (`tf/main.tf`)                              | 7 Cloud Functions Gen2, Firestore, Firebase Auth, 3 Cloud Scheduler jobs, Secret Manager secret, GCS source bucket, IAM, composite indexes. |
-| Firebase Hosting   | `scripts/deploy_frontend.sh`                          | `frontend/dist` SPA at `${project_id}.web.app` with SPA rewrite to `/index.html`.                                                         |
+| Node               | Provisioned by                    | Contents                                                                                                                                  |
+|--------------------|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| GCP project        | Terraform (`tf/main.tf`)          | 7 Cloud Functions Gen2, Firestore, Firebase Auth, 3 Cloud Scheduler jobs, Secret Manager secret, GCS source bucket, IAM, composite indexes. |
+| Firebase Hosting   | `scripts/deploy_frontend.sh`      | `frontend/dist` SPA at `${project_id}.web.app` with SPA rewrite to `/index.html`.                                                         |
 
 ### 7.2 Network and security
 
 - **End users → backend:** HTTPS with `Authorization: Bearer <Firebase ID token>`. Backend verifies via Firebase JWKs.
 - **Service ↔ service:** HTTP with header `X-Internal-Api-Key: ${INTERNAL_API_KEY}`.
 - **Cloud Scheduler → Cloud Functions:** same internal API key in HTTP headers.
-- **Pi internal:** services bind to `127.0.0.1` only; only the SPA (and curl on the host) can reach them. The Pi's outbound traffic reaches Firestore, Telegram, Monobank, Gemini and Cloud Scheduler.
 - **Cloud Functions invoker:** currently `roles/run.invoker` is granted to `allUsers`; protection is at the application layer (Firebase token / internal key). See risk in §11.
-- **Secrets:**
-  - Cloud: Secret Manager (`gemini-api-key`); other secrets injected as Terraform variables / env.
-  - Pi: `local_server/secrets/` mounted at `/etc/cloudapi/local_server.env`; `GOOGLE_APPLICATION_CREDENTIALS` for Firestore.
+- **Secrets:** Secret Manager (`gemini-api-key`); other secrets injected as Terraform variables / env.
 
 References:
 [tf/main.tf](../tf/main.tf),
-[local_server/docker-compose.yml](../local_server/docker-compose.yml),
-[local_server/systemd/cloudapi-telegram.service](../local_server/systemd/cloudapi-telegram.service),
 [firebase.json](../firebase.json),
 [scripts/deploy_frontend.sh](../scripts/deploy_frontend.sh).
 
@@ -525,7 +459,6 @@ References:
 ### 8.4 Observability
 
 - **Sentry**: every backend service has an optional `_init_sentry()` reading `SENTRY_DSN` and `DISABLE_SENTRY`.
-- **Health**: Pi scheduler exposes `GET /healthz` (`local_server/src/local_server/health.py`) reporting last heartbeat and last error.
 - **Logs**: `loguru` in sync services; Cloud Logging in GCP via Functions runtime.
 
 ### 8.5 Configuration
@@ -533,15 +466,12 @@ References:
 | Surface           | Mechanism                                                                                          |
 |-------------------|----------------------------------------------------------------------------------------------------|
 | Cloud Functions   | `environment_variables` block in `tf/main.tf` per function. Secrets via `secret_environment_variables`. |
-| Pi services       | `/etc/cloudapi/local_server.env` (systemd) or `local_server/secrets/` mount (compose).               |
 | Frontend          | `VITE_*` build-time env, baked into `frontend/dist`.                                                |
 
-**Local Firestore mode (development and Pi offline):**
-- `LOCAL_DB=true` (default in `local_server/.env.example`) activates the Firebase Emulator (`docker compose --profile local up`).
-- Services read `FIRESTORE_EMULATOR_HOST=firebase-emulator:8080` injected by `local_server/docker-compose.yml`.
-- Emulator data persists in `.emulator-data/` (shared with root dev compose; reset with `docker compose down -v`).
-- `LOCAL_DB=false` → `make -C local_server cloud-run` skips the emulator profile and connects to production Cloud Firestore.
-- Firebase Auth remains real (not emulated) even in local mode; only Firestore switches.
+**Local development:**
+- Firestore Emulator and Auth Emulator are started via `docker compose up` (root `docker-compose.yml`).
+- Services read `FIRESTORE_EMULATOR_HOST=firebase-emulator:8080` injected by docker-compose.
+- Emulator data persists in `.emulator-data/` (reset with `docker compose down -v`).
 
 ### 8.6 CORS
 
@@ -549,22 +479,15 @@ Each backend service handles `OPTIONS *` manually, returning permissive CORS hea
 
 ### 8.7 Scheduling model
 
-**Primary (local) pipeline:** The Pi runs two independent cron jobs via APScheduler:
-- **18:00 UTC** — `sync_worker` (8084) synchronizes all users' Monobank accounts and transactions to the local Firestore emulator.
-- **21:45 UTC** — `daily_reports` delivers narrative reports via Telegram.
+Three Cloud Scheduler jobs are defined in Terraform:
 
-**Cloud backup pipeline:** A parallel GCP-targeted sync runs on a separate schedule to avoid rate limits and provide independent backup:
-- **07:00 UTC** — `sync_worker_cloud` (8094) orchestrates the same sync flow, but writes accounts and transactions to **Cloud Firestore** (production GCP) via `accounts_api_cloud` (8092) and `sync_transactions_cloud` (8095). Uses `users_api` (8081) from the local emulator as the source of truth for user tokens; only accounts and transactions are replicated to the cloud.
+| Job                    | Schedule        | Target                                                        |
+|------------------------|-----------------|---------------------------------------------------------------|
+| `sync_worker_hourly`   | configurable    | `sync_worker POST /sync/accounts`                             |
+| `daily_reports_daily`  | configurable    | `users_api POST /telegram/reports/daily/send_enabled`         |
+| `rpi_unblocker`        | configurable    | `users_api POST /internal/scheduler/unblock`                  |
 
-**Cloud Scheduler failover:** Three Cloud Scheduler jobs are defined; only one is normally active:
-
-| Job                         | Default state | Target                                                        | Owner of trigger when active           |
-|-----------------------------|--------------:|---------------------------------------------------------------|----------------------------------------|
-| `sync_worker_hourly`        | paused        | cloud `sync_worker /sync/accounts`                            | Resumed only on Pi failure.            |
-| `daily_reports_daily`       | paused        | cloud `users_api /telegram/reports/daily/send_enabled`        | Resumed only on Pi failure.            |
-| `rpi_unblocker`             | **active**    | cloud `users_api /internal/scheduler/unblock`                 | Cron itself (after heartbeat stops).   |
-
-When the Pi is healthy, **APScheduler on the Pi** drives the local pipeline HTTP routes against `127.0.0.1` services, while `local_server.control_loop` keeps pushing `rpi_unblocker.schedule_time` into the future. The cloud backup pipeline also runs independently on its own schedule, keeping GCP Firestore in sync as a durable backup.
+`/internal/scheduler/unblock` resumes paused jobs and sets the Telegram webhook when called.
 
 ### 8.8 AI / LLM
 
@@ -586,11 +509,11 @@ When the Pi is healthy, **APScheduler on the Pi** drives the local pipeline HTTP
 **Decision:** Firestore as the only data store; documents shaped around the `users/{uid}/accounts/{aid}/transactions/{tid}` tree.
 **Consequences:** cheap reads, easy security model along the hierarchy, but reporting needs explicit composite indexes and collection-group queries.
 
-### ADR-3 — Pi-primary, cloud-failover
+### ADR-3 — ~~Pi-primary, cloud-failover~~ (superseded by ADR-7)
 
-**Context:** running everything in GCP would either incur cost or require always-warm instances; the operator already has a Pi.
-**Decision:** make the Pi the active runtime; deploy the same code to Cloud Functions and keep their schedulers paused, governed by a dead-man's-switch.
-**Consequences:** zero ongoing cloud cost for compute when the Pi is up; hands-off failover; trade-off: the failover path is a separate code path (Telegram polling vs webhook) that must be tested.
+**Context:** originally the Pi was the active runtime with Cloud Functions as passive failover.
+**Decision (original):** make the Pi the active runtime; keep cloud schedulers paused, governed by a dead-man's-switch.
+**Superseded:** see ADR-7. Local server removed; GCP Cloud Functions are now the sole runtime.
 
 ### ADR-4 — `X-Internal-Api-Key` over IAM-authenticated invoker
 
@@ -598,17 +521,22 @@ When the Pi is healthy, **APScheduler on the Pi** drives the local pipeline HTTP
 **Decision:** ship a static internal API key as a Terraform variable, allow `allUsers` invoker on Cloud Functions, and gate at app layer.
 **Consequences:** no need to manage GCP service-account audiences; one secret to rotate; trade-off: a leaked key bypasses all internal endpoints. Tightening to IAM is a follow-up.
 
-### ADR-5 — Telegram polling on Pi, webhook in cloud
+### ADR-5 — ~~Telegram polling on Pi, webhook in cloud~~ (superseded by ADR-7)
 
-**Context:** Telegram requires a public HTTPS URL for webhooks; the Pi has none by default; localhost rejected for inline-keyboard URLs.
-**Decision:** run a polling worker on the Pi; deploy `telegram_bot` Cloud Function as the webhook target, switched on only by failover.
-**Consequences:** two Telegram code paths; failover must call `setWebhook` (and recovery must `deleteWebhook`) — encoded in `users_api/scheduler_ops.py` and `local_server/control_loop.py`.
+**Context:** originally Telegram polling ran on the Pi; the Cloud Function handled webhooks only on failover.
+**Superseded:** see ADR-7. Only the webhook path (`telegram_bot` Cloud Function) remains.
 
 ### ADR-6 — No shared Python package across services
 
 **Context:** functions-framework deploys ship a single source dir; sharing via `pip install` would require publishing.
 **Decision:** duplicate `auth.py`, `firestore_client.py`, `models.py` per service.
 **Consequences:** clean deploy artifacts; risk of drift between services. Convention compensates: same filenames, same patterns.
+
+### ADR-7 — Remove local server; GCP-only runtime
+
+**Context:** maintaining a parallel Raspberry Pi runtime (local_server) alongside Cloud Functions added operational complexity, two Telegram code paths, and systemd/deploy tooling outside Terraform scope.
+**Decision:** remove `local_server/` entirely. Cloud Functions Gen2 + Cloud Scheduler are the sole runtime. Telegram uses only the webhook path.
+**Consequences:** simpler codebase; all infra is Terraform-managed; no dead-man's-switch heartbeat needed. Trade-off: no free local compute; all sync runs on GCP.
 
 ---
 
@@ -626,7 +554,7 @@ flowchart TD
   Q --> Op[Operability]
 
   Cost --> C1[Stay in GCP free tier]
-  Avail --> A1[Hourly sync survives Pi outage]
+  Avail --> A1[Hourly sync runs on schedule]
   Avail --> A2[Daily report delivered before 09:00 local]
   Dur --> D1[No transaction loss across reruns]
   Sec --> S1[Per-user data isolation in API layer]
@@ -638,9 +566,9 @@ flowchart TD
 
 | ID  | Scenario                                                                                   | Response                                                                                  |
 |-----|--------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Q1  | Pi loses power for 2 hours.                                                                | Within `UNBLOCKER_LEAD_SEC` (≈ 30 min) the cloud takes over hourly sync and daily report. |
+| Q1  | Cloud Scheduler fires `sync_worker_hourly`.                                                | `sync_worker` fans out per user; completes within timeout; transactions written to Firestore. |
 | Q2  | Monobank temporarily returns 429 for one user.                                              | That user's sync skips this run; others proceed; next run retries.                        |
-| Q3  | Operator runs `make run` on a fresh laptop.                                                | Full stack (frontend, six APIs, Telegram polling, emulators) is up via `docker compose`.  |
+| Q3  | Operator runs `make run` on a fresh laptop.                                                | Full stack (frontend, six APIs, Telegram bot, emulators) is up via `docker compose`.      |
 | Q4  | A new transaction is fetched twice from Monobank.                                          | Idempotent write because the Monobank ID is the Firestore doc ID.                         |
 | Q5  | A web user is signed in to Firebase but not registered.                                    | All API calls return `403 USER_NOT_FOUND`; the SPA redirects to `/register`.              |
 | Q6  | Daily report user has 0 transactions.                                                      | `report_api` still returns a non-empty markdown summary using account snapshots.          |
@@ -657,9 +585,8 @@ flowchart TD
 | 4 | Code duplication across 7 services (`auth.py`, `firestore_client.py`).                     | Drift, inconsistent fixes.                                                   | Extract a shared package and vendor it during build.         |
 | 5 | Manual `request.path` routing in each function.                                            | Easy to miss methods / paths; harder to test.                                | Adopt Flask blueprints or a thin router util.                |
 | 6 | `migrate_transactions.py` is a one-off script not in CI.                                   | Hard to reproduce migrations.                                                | Move under `scripts/` with explicit doc and dry-run default. |
-| 7 | Two Telegram code paths (polling on Pi, webhook in cloud).                                 | Failover regressions are easy to miss.                                       | Add an integration smoke test that exercises both paths.     |
-| 8 | `INTERNAL_API_KEY` is a single static secret.                                              | Leak = full internal access.                                                 | Per-caller keys or short-lived tokens.                       |
-| 9 | Frontend stores no global auth state library; relies on `onAuthStateChanged` in `App.tsx`. | Risk of subtle re-render / token-refresh bugs.                               | Introduce `react-query`/`zustand` if complexity grows.       |
+| 7 | `INTERNAL_API_KEY` is a single static secret.                                              | Leak = full internal access.                                                 | Per-caller keys or short-lived tokens.                       |
+| 8 | Frontend stores no global auth state library; relies on `onAuthStateChanged` in `App.tsx`. | Risk of subtle re-render / token-refresh bugs.                               | Introduce `react-query`/`zustand` if complexity grows.       |
 
 ---
 
@@ -679,9 +606,7 @@ flowchart TD
 | `sync_worker`                 | Backend service that fan-outs hourly Monobank sync per user.                                                            |
 | `sync_transactions`           | Backend service that pulls Monobank statements and writes transactions in batches.                                       |
 | `telegram_bot`                | Cloud Function handling Telegram webhook updates.                                                                        |
-| Pi / local_server             | Raspberry Pi deployment running all backend services on `127.0.0.1` plus an APScheduler-driven scheduler.               |
-| `rpi_unblocker`               | Cloud Scheduler job acting as a dead-man's-switch; fires only when the Pi heartbeat stops postponing it.                 |
-| Heartbeat                     | Periodic call from `local_server.control_loop` that pushes `rpi_unblocker.schedule_time` further into the future.       |
+| `rpi_unblocker`               | Cloud Scheduler job that calls `/internal/scheduler/unblock` to resume paused jobs and set the Telegram webhook.         |
 | Family request                | Pending sharing relationship in `users/{uid}/family_requests/{requester_id}`; on accept both users gain read-only links. |
 | Daily report                  | Per-user markdown summary of yesterday's transactions, optionally enriched with an LLM narrative.                       |
 | Auth Emulator / Firestore Emulator | Firebase local emulators used during `make run`/dev for offline auth and DB.                                       |
@@ -696,7 +621,6 @@ flowchart TD
 [Makefile](../Makefile),
 [functions/](../functions/),
 [frontend/](../frontend/),
-[local_server/](../local_server/),
 [tf/main.tf](../tf/main.tf),
 [docs/auth.md](auth.md),
 [docs/firestore_schema.md](firestore_schema.md),

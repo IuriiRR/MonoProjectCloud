@@ -20,7 +20,7 @@ These rules are critical and must be strictly followed during every interaction:
 **Run everything locally:**
 ```bash
 make run           # Starts all services + Firestore/Auth emulators + frontend
-make test          # Runs Python tests + local_server tests + frontend tests
+make test          # Runs Python tests + frontend tests
 make frontend-dev  # Frontend dev server with Vite (HMR)
 ```
 
@@ -30,9 +30,6 @@ make frontend-dev  # Frontend dev server with Vite (HMR)
 python -m pytest tests/ -v -k "test_name"
 python -m pytest functions/users_api/ -v
 
-# Local server
-PYTHONPATH=local_server/src:. python -m pytest local_server/tests/ -v -k "test_name"
-
 # Frontend
 cd frontend && npm test -- --run -t "test name"
 ```
@@ -41,7 +38,7 @@ cd frontend && npm test -- --run -t "test name"
 
 ## 🏗️ Architecture Overview
 
-**CloudApi** is a personal Monobank aggregator with a React UI and Telegram bot. It runs primarily on a Raspberry Pi with passive failover to GCP Cloud Functions.
+**CloudApi** is a personal Monobank aggregator with a React UI and Telegram bot, running on GCP Cloud Functions.
 
 ### Core Components
 
@@ -53,8 +50,7 @@ cd frontend && npm test -- --run -t "test name"
   - `sync_worker` (port 8084) — Orchestrates hourly sync cycles
   - `sync_transactions` (port 8085) — Fetches and caches Monobank transactions
   - `report_api` (port 8086) — Generates daily narrative spending reports
-  - `telegram_bot` (port 8087) — Polls/webhooks for Telegram notifications and account linking
-- `local_server/` — Runs locally on the Raspberry Pi; mirrors GCP production APIs when cloud is unavailable
+  - `telegram_bot` (port 8087) — Webhook handler for Telegram notifications and account linking
 - `tests/` — Shared integration and unit tests
 - `firebase/` — Firestore emulator + Auth emulator (ports 8080, 9099, 4000)
 
@@ -69,7 +65,6 @@ cd frontend && npm test -- --run -t "test name"
 ### Key Deployment Targets
 - **GCP Cloud Functions Gen2** — Production backend
 - **Firebase Hosting** — Production frontend (built by `./scripts/deploy_frontend.sh`)
-- **Raspberry Pi** — `local_server` runs in systemd; offers graceful degradation if cloud is down
 - **Terraform** — Infrastructure-as-code in `tf/` (includes API enablement, Cloud Scheduler jobs, Secret Manager)
 
 ---
@@ -105,7 +100,6 @@ if os.getenv("FIRESTORE_EMULATOR_HOST"):
 ## 🧪 Testing Strategy
 
 - **Backend unit tests** in `tests/` and function subdirectories (pytest)
-- **Local server tests** in `local_server/tests/` (pytest, PYTHONPATH setup required)
 - **Frontend tests** in `frontend/` (Vitest + React Testing Library)
 - **No mocking of Firestore** — tests hit the emulator
 - **Integration focus** — tests exercise real auth, Firestore, and API boundaries
@@ -126,9 +120,9 @@ if os.getenv("FIRESTORE_EMULATOR_HOST"):
 
 ## 🤖 Telegram Integration
 
-**Local development (polling mode)**
+**Local development**
 - Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_BOT_USERNAME` to `.env`
-- `make run` automatically starts polling; no webhook tunnel needed
+- `make run` starts the bot in polling mode; no webhook tunnel needed
 - Emulator auth rejection: local dev uses callback buttons (webhooks can't target localhost)
 
 **Production (webhook mode)**
