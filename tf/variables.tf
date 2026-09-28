@@ -9,6 +9,12 @@ variable "region" {
   default     = "europe-west1"
 }
 
+variable "firestore_location_id" {
+  type        = string
+  description = "Location for Firestore database (e.g. europe-west1, or multi-region eur3). Defaults to var.region."
+  default     = ""
+}
+
 variable "function_name" {
   type        = string
   description = "Cloud Function name (users_api)."
@@ -224,6 +230,12 @@ variable "sync_worker_scheduler_job_name" {
   default     = "sync-worker-hourly"
 }
 
+variable "sync_worker_paused" {
+  type        = bool
+  description = "Whether the sync_worker Cloud Scheduler job is paused."
+  default     = false
+}
+
 variable "daily_reports_schedule" {
   type        = string
   description = "Cron schedule for Cloud Scheduler job that sends Telegram daily reports to all users with daily_report enabled."
@@ -235,6 +247,12 @@ variable "daily_reports_scheduler_job_name" {
   type        = string
   description = "Cloud Scheduler job name that sends daily Telegram reports."
   default     = "daily-reports-daily"
+}
+
+variable "daily_reports_paused" {
+  type        = bool
+  description = "Whether the daily_reports Cloud Scheduler job is paused."
+  default     = false
 }
 
 variable "scheduler_time_zone" {
